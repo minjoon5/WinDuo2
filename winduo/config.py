@@ -58,7 +58,7 @@ class Settings:
     # --- Look ------------------------------------------------------------
     #: Gaussian blur radius at the far edge, in points. The blur is a mip level,
     #: log2 of the radius, so a visible step needs about 1.4 times the radius.
-    max_blur_radius: float = 210.0
+    max_blur_radius: float = 290.0
     #: Blur at the hinge edge as a fraction of the blur at the far edge.
     #: 0 blurs the far edge only, 1 blurs the whole picture evenly.
     blur_evenness: float = 0.3
@@ -107,10 +107,9 @@ class Settings:
     neutral_settle_tolerance: float = 1.5
     #: How long a lid stopped partway closed keeps the effect before its
     #: position becomes neutral and the effect eases out.
-    #: 0.6 s: at 0.4 a pause to look ended the effect at once, and at 4, and
-    #: still slightly at 1, the screen took too long to come back after a lid
-    #: stopped partway.
-    partial_hold_seconds: float = 0.6
+    #: 0.4 s, the shortest the settings allow: on a Galaxy Book Pro 360 even
+    #: 0.6 kept the screen waiting too long after a lid stopped partway.
+    partial_hold_seconds: float = 0.4
 
     # --- Estimator -------------------------------------------------------
     #: Estimator confidence below which the effect will not trigger.
@@ -133,7 +132,7 @@ class Settings:
         out.trigger_travel = _clamp(out.trigger_travel, 2.0, 40.0)
         out.full_effect_travel = _clamp(out.full_effect_travel, 5.0, 90.0)
         out.release_hysteresis = _clamp(out.release_hysteresis, 0.5, 15.0)
-        out.max_blur_radius = _clamp(out.max_blur_radius, 10.0, 300.0)
+        out.max_blur_radius = _clamp(out.max_blur_radius, 10.0, 400.0)
         out.blur_evenness = _clamp(out.blur_evenness, 0.0, 1.0)
         out.max_dim = _clamp(out.max_dim, 0.0, 1.0)
         out.dim_reach = _clamp(out.dim_reach, 0.2, 1.0)

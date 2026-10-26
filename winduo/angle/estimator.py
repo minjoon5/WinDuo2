@@ -74,7 +74,7 @@ class TravelEstimator:
         self,
         settle_seconds: float = 0.4,
         settle_tolerance: float = 1.5,
-        hold_seconds: float = 0.6,
+        hold_seconds: float = 0.4,
         hold_travel: float = 6.0,
     ) -> None:
         self.settle_seconds = settle_seconds

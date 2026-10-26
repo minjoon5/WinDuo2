@@ -409,3 +409,47 @@ class TestNeutralAngleDuringARun:
         separations = [f.start_angle - f.current_angle for f in frames]
         peak = separations.index(max(separations))
         assert all(b <= a + 1e-9 for a, b in zip(separations[peak:], separations[peak + 1:], strict=False))
+
+
+class TestEaseOut:
+    def test_the_return_eases_in_and_out_over_the_set_time(self):
+        # The spring snapped back in about 0.3 s and looked abrupt. The return
+        # now starts gently, ends gently, and never reverses.
+        from winduo.effect.controller import CLOSING_OUT_DURATION
+
+        controller = EffectController(Settings())
+        now = 0.0
+        for travel in range(0, 41):
+            now += 1 / 60
+            controller.observe(
+                AngleSample(
+                    travel=float(travel), velocity=60.0, confidence=1.0,
+                    timestamp=now, at_rest=False, absolute_angle=110.0 - travel,
+                ),
+                now,
+            )
+            controller.step(now)
+        values = []
+        started = None
+        while True:
+            now += 1 / 60
+            controller.observe(
+                AngleSample(
+                    travel=0.0, velocity=0.0, confidence=1.0,
+                    timestamp=now, at_rest=True, absolute_angle=70.0,
+                ),
+                now,
+            )
+            frame = controller.step(now)
+            if started is None:
+                started = now
+            values.append(controller._travel.value)
+            if frame is None or frame.is_final:
+                break
+        assert now - started == pytest.approx(CLOSING_OUT_DURATION, abs=2 / 60)
+        assert all(b <= a + 1e-9 for a, b in zip(values, values[1:], strict=False))
+        steps = [a - b for a, b in zip(values, values[1:], strict=False)]
+        middle = max(steps)
+        assert steps[0] < middle / 3
+        assert steps[-1] < middle / 3
+        assert values[-1] == 0.0

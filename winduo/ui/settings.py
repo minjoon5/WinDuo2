@@ -179,7 +179,7 @@ class SettingsWindow(QWidget):
         # --- Look
         layout.addWidget(SectionLabel("Look"))
         self._blur = SliderRow(
-            "Blur", 10, 300, 210, suffix=" px",
+            "Blur", 10, 400, 290, suffix=" px",
             help_text="Blur radius at the top edge, furthest from the hinge.",
         )
         self._blur.changed.connect(lambda v: self._apply(max_blur_radius=v))
@@ -282,7 +282,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._settle)
 
         self._hold = SliderRow(
-            "Hold a partly closed lid for", 0.4, 30.0, 0.6, suffix=" s", decimals=1,
+            "Hold a partly closed lid for", 0.4, 30.0, 0.4, suffix=" s", decimals=1,
             help_text=(
                 "How long the effect stays when you stop partway through closing, "
                 "before that position becomes the new neutral."

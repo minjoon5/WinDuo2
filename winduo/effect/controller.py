@@ -75,13 +75,19 @@ PREDICTION_LATENCY = 0.02
 #: run that appears and vanishes within two frames reads as a glitch.
 MINIMUM_DURATION = 0.3
 
-#: How close the eased travel must get to zero before the final frame snaps
-#: there. Half a degree short, the dimming still darkens the top of the picture
-#: by a few percent, and the fade would then reveal a brighter screen behind it.
-SETTLE_EPSILON = 0.05
+#: How long the picture takes to ease back to flat once the effect ends, in
+#: seconds. A timed ease rather than the spring: chasing a target that had just
+#: dropped to zero, the spring snapped back in about 0.3 s, which on a Galaxy
+#: Book Pro 360 looked abrupt when the lid stopped partway.
+CLOSING_OUT_DURATION = 0.6
 
-#: Safety net, in case the spring never quite settles.
-CLOSING_OUT_TIMEOUT = 1.2
+
+def ease_in_out(t: float) -> float:
+    """Smootherstep: zero speed at both ends, so the return neither jerks into
+    motion nor lands with a bump."""
+    t = min(max(t, 0.0), 1.0)
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
 
 IDLE_INTERVAL = 1.0 / 8
 ACTIVE_INTERVAL = 1.0 / 60
@@ -130,6 +136,7 @@ class EffectController:
         self._last_closing = -1e9
         self._started_at = 0.0
         self._closing_out_since = 0.0
+        self._closing_out_from = 0.0
         self._last_frame_time = 0.0
         self._suspended = False
 
@@ -253,15 +260,13 @@ class EffectController:
         if self.phase is Phase.IDLE:
             return None
 
-        target = 0.0 if self.phase is Phase.CLOSING_OUT else max(self._raw_travel, 0.0)
-        self._travel.advance(target, dt)
-
         if self.phase is not Phase.CLOSING_OUT:
+            self._travel.advance(max(self._raw_travel, 0.0), dt)
             return self._frame(self._travel.value)
 
-        settled = self._travel.value <= SETTLE_EPSILON
-        timed_out = now - self._closing_out_since > CLOSING_OUT_TIMEOUT
-        if not (settled or timed_out):
+        elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION
+        if elapsed < 1.0:
+            self._travel.reset(self._closing_out_from * (1.0 - ease_in_out(elapsed)))
             return self._frame(self._travel.value)
 
         # The frame that fades out has to match the screen behind it exactly, so
@@ -358,6 +363,7 @@ class EffectController:
     def _begin_closing_out(self, now: float) -> None:
         self.phase = Phase.CLOSING_OUT
         self._closing_out_since = now
+        self._closing_out_from = self._travel.value
         log.info("effect easing out: travel %.1f deg", self._raw_travel)
 
     def _abandon(self) -> None:

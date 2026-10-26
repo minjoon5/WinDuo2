@@ -73,33 +73,43 @@ uniform float uOpacity;             // 0 to 1, the fade where windows cannot fad
 
 out vec4 fragColour;
 
-// A mip level alone is a box filter, and magnifying one draws its texels as
-// visible blocks: on a Galaxy Book Pro 360 the blur showed pixels. So the blur
-// reads one and a half levels finer and averages a disc of taps over it, Gaussian
-// weighted, which spreads to about the same width without the grid.
-#define BLUR_TAPS 16
-// A Vogel spiral: even coverage of the disc with no preferred direction.
-const vec2 DISC[BLUR_TAPS] = vec2[](
-    vec2( 0.265,  0.000), vec2(-0.339,  0.310), vec2( 0.052, -0.591), vec2( 0.427,  0.557),
-    vec2(-0.783, -0.139), vec2( 0.742, -0.472), vec2(-0.248,  0.923), vec2(-0.473, -0.911),
-    vec2( 1.027,  0.375), vec2(-1.068,  0.441), vec2( 0.515, -1.101), vec2( 0.381,  1.213),
-    vec2(-1.147, -0.665), vec2( 1.346, -0.296), vec2(-0.821,  1.168), vec2(-0.190, -1.464)
-);
+// A mip level alone is a box filter, and magnifying one bilinearly draws its
+// texels as visible blocks: on a Galaxy Book Pro 360 the blur showed pixels.
+// A cubic B-spline over the same level is smooth to the second derivative, so
+// no grid survives, and it costs four bilinear taps rather than sixteen. The
+// two levels either side of a fractional level are blended, so the blur grows
+// continuously rather than stepping from one level to the next.
+vec3 bsplineLevel(vec2 uv, float lod) {
+    vec2 size = vec2(textureSize(uPicture, int(lod)));
+    vec2 texel = uv * size - 0.5;
+    vec2 f = fract(texel);
+    vec2 base = texel - f;
+    vec2 f2 = f * f;
+    vec2 f3 = f2 * f;
+    vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+    vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+    vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+    vec2 w3 = f3 / 6.0;
+    vec2 g0 = w0 + w1;
+    vec2 g1 = w2 + w3;
+    vec2 h0 = (base - 0.5 + w1 / g0) / size;
+    vec2 h1 = (base + 1.5 + w3 / g1) / size;
+    return g0.y * (g0.x * textureLod(uPicture, vec2(h0.x, h0.y), lod).rgb
+                 + g1.x * textureLod(uPicture, vec2(h1.x, h0.y), lod).rgb)
+         + g1.y * (g0.x * textureLod(uPicture, vec2(h0.x, h1.y), lod).rgb
+                 + g1.x * textureLod(uPicture, vec2(h1.x, h1.y), lod).rgb);
+}
 
 vec3 softBlur(vec2 uv, float level) {
-    if (level < 0.5) {
-        return textureLod(uPicture, uv, level).rgb;
+    // The B-spline spreads about one level wider than the level it reads, so
+    // it reads one finer to keep the blur the width the radius asks for.
+    level -= 1.0;
+    if (level <= 0.0) {
+        return textureLod(uPicture, uv, max(level + 1.0, 0.0)).rgb;
     }
-    float base = max(level - 1.5, 0.0);
-    vec2 step = exp2(base) * 2.0 / vec2(textureSize(uPicture, 0));
-    vec3 sum = vec3(0.0);
-    float total = 0.0;
-    for (int i = 0; i < BLUR_TAPS; ++i) {
-        float weight = exp(-dot(DISC[i], DISC[i]) * 0.8);
-        sum += textureLod(uPicture, uv + DISC[i] * step, base).rgb * weight;
-        total += weight;
-    }
-    return sum / total;
+    float low = floor(level);
+    float high = min(low + 1.0, uMaxLevel);
+    return mix(bsplineLevel(uv, low), bsplineLevel(uv, high), level - low);
 }
 
 // The picture is stored as sRGB and sampled to linear light, so the dimming has
