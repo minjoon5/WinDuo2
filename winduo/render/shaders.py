@@ -15,7 +15,7 @@ One sample per pixel, whatever the blur radius. A separable Gaussian at a
 
 from __future__ import annotations
 
-__all__ = ["VERTEX", "FRAGMENT"]
+__all__ = ["VERTEX", "FRAGMENT", "DOWNSAMPLE"]
 
 VERTEX = """
 #version 330 core
@@ -215,5 +215,49 @@ void main() {
     // Premultiplied. uOpacity stays 1 on Windows, where the window's own
     // opacity does the fade; Wayland has no window opacity, so it fades here.
     fragColour = vec4(linearToSrgb(colour) * uOpacity, uOpacity);
+}
+"""
+
+
+DOWNSAMPLE = """
+#version 330 core
+
+// One level of the blur pyramid from the level below it. The fixed-function
+// mipmap is a 2x2 box, which aliases: detail it cannot represent folds into
+// blocks, and no filtering on the way back up removes them, so the blur showed
+// pixels. This is the 13-tap downsample from Jimenez's "Next Generation Post
+// Processing in Call of Duty" (SIGGRAPH 2014): five overlapping 2x2 boxes,
+// weighted to approximate a Gaussian, which leaves nothing to alias.
+
+uniform sampler2D uSource;   // sampling restricted to the source level
+uniform vec2 uSourceTexel;   // one source texel, in texture coordinates
+uniform vec2 uTargetSize;    // the level being written, in texels
+
+out vec4 fragColour;
+
+vec3 tap(vec2 uv, vec2 offset) {
+    return textureLod(uSource, uv + offset * uSourceTexel, 0.0).rgb;
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / uTargetSize;
+    vec3 a = tap(uv, vec2(-2.0,  2.0));
+    vec3 b = tap(uv, vec2( 0.0,  2.0));
+    vec3 c = tap(uv, vec2( 2.0,  2.0));
+    vec3 d = tap(uv, vec2(-2.0,  0.0));
+    vec3 e = tap(uv, vec2( 0.0,  0.0));
+    vec3 f = tap(uv, vec2( 2.0,  0.0));
+    vec3 g = tap(uv, vec2(-2.0, -2.0));
+    vec3 h = tap(uv, vec2( 0.0, -2.0));
+    vec3 i = tap(uv, vec2( 2.0, -2.0));
+    vec3 j = tap(uv, vec2(-1.0,  1.0));
+    vec3 k = tap(uv, vec2( 1.0,  1.0));
+    vec3 l = tap(uv, vec2(-1.0, -1.0));
+    vec3 m = tap(uv, vec2( 1.0, -1.0));
+    vec3 colour = e * 0.125
+        + (a + c + g + i) * 0.03125
+        + (b + d + f + h) * 0.0625
+        + (j + k + l + m) * 0.125;
+    fragColour = vec4(colour, 1.0);
 }
 """

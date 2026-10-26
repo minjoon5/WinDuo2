@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import QWidget
 
 from winduo.log import get_logger
 from winduo.render import win32
-from winduo.render.shaders import FRAGMENT, VERTEX
+from winduo.render.shaders import DOWNSAMPLE, FRAGMENT, VERTEX
 
 log = get_logger("overlay")
 
@@ -136,6 +136,7 @@ class _DepthView(QOpenGLWidget):
         super().__init__(parent)
         self._program = None
         self._vao = None
+        self._pyramid: BlurPyramid | None = None
         self._texture = None
         self._uniforms: dict[str, int] = {}
 
@@ -224,6 +225,7 @@ class _DepthView(QOpenGLWidget):
         try:
             self._program = _build_program()
             self._vao = GL.glGenVertexArrays(1)
+            self._pyramid = BlurPyramid()
             self._allocate_texture()
             self._uniforms = _uniform_locations(self._program)
             GL.glDisable(GL.GL_DEPTH_TEST)
@@ -352,7 +354,10 @@ class _DepthView(QOpenGLWidget):
             GL.GL_UNSIGNED_BYTE,
             frame,
         )
-        GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
+        if self._pyramid is not None and self._pyramid.usable:
+            self._pyramid.build(self._texture, self._texture_size, self.defaultFramebufferObject())
+        else:
+            GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
         self._has_picture = True
 
 
@@ -651,9 +656,78 @@ def texture_layout(screen_size, picture_size):
     return texture, inset, origin, padded
 
 
-def _build_program() -> int:
+class BlurPyramid:
+    """Fills a texture's mip levels with a Gaussian-like downsample.
+
+    ``glGenerateMipmap`` averages 2x2 boxes, and the aliasing that leaves in
+    each level shows through the blur as pixels. This renders every level from
+    the one below it with :data:`DOWNSAMPLE` instead. Needs a current context.
+    """
+
+    def __init__(self) -> None:
+        self.program = _build_program(DOWNSAMPLE)
+        self.vao = GL.glGenVertexArrays(1)
+        self.framebuffer = GL.glGenFramebuffers(1)
+        self.uniforms = {
+            name: GL.glGetUniformLocation(self.program, name)
+            for name in ("uSource", "uSourceTexel", "uTargetSize")
+        }
+        self.usable = True
+
+    def build(self, texture: int, size: tuple[int, int], restore_framebuffer: int) -> None:
+        width, height = size
+        levels = int(math.floor(math.log2(max(width, height, 1))))
+        viewport = GL.glGetIntegerv(GL.GL_VIEWPORT)
+
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.framebuffer)
+        GL.glUseProgram(self.program)
+        GL.glBindVertexArray(self.vao)
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, texture)
+        GL.glUniform1i(self.uniforms["uSource"], 0)
+        # The texture is sRGB: sampling decodes to linear light, and this makes
+        # writing encode back, so the averaging happens in linear light.
+        GL.glEnable(GL.GL_FRAMEBUFFER_SRGB)
+        GL.glDisable(GL.GL_BLEND)
+        try:
+            source_w, source_h = width, height
+            for level in range(1, levels + 1):
+                target_w, target_h = max(width >> level, 1), max(height >> level, 1)
+                # Sampling only the level below while writing this one; reading
+                # and writing the same level would be a feedback loop.
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_BASE_LEVEL, level - 1)
+                GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_LEVEL, level - 1)
+                GL.glFramebufferTexture2D(
+                    GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, texture, level
+                )
+                status = GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER)
+                if status != GL.GL_FRAMEBUFFER_COMPLETE:
+                    # A driver that will not render into a mip level still
+                    # gets a blur, just the box-filtered one.
+                    log.warning("blur pyramid unavailable (%s); using plain mipmaps", status)
+                    self.usable = False
+                    break
+                GL.glViewport(0, 0, target_w, target_h)
+                GL.glUniform2f(self.uniforms["uSourceTexel"], 1.0 / source_w, 1.0 / source_h)
+                GL.glUniform2f(self.uniforms["uTargetSize"], float(target_w), float(target_h))
+                GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
+                source_w, source_h = target_w, target_h
+        finally:
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_BASE_LEVEL, 0)
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_LEVEL, 1000)
+            GL.glDisable(GL.GL_FRAMEBUFFER_SRGB)
+            GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, restore_framebuffer)
+            GL.glViewport(*[int(v) for v in viewport])
+            GL.glBindVertexArray(0)
+            GL.glUseProgram(0)
+        if not self.usable:
+            GL.glBindTexture(GL.GL_TEXTURE_2D, texture)
+            GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
+
+
+def _build_program(fragment: str = FRAGMENT) -> int:
     program = GL.glCreateProgram()
-    for stage, source in ((GL.GL_VERTEX_SHADER, VERTEX), (GL.GL_FRAGMENT_SHADER, FRAGMENT)):
+    for stage, source in ((GL.GL_VERTEX_SHADER, VERTEX), (GL.GL_FRAGMENT_SHADER, fragment)):
         shader = GL.glCreateShader(stage)
         GL.glShaderSource(shader, source)
         GL.glCompileShader(shader)
