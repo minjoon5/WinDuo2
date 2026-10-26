@@ -185,9 +185,25 @@ class _DepthView(QOpenGLWidget):
         return not self._failed
 
     def submit(self, frame: np.ndarray | None, params: FrameParams) -> None:
-        """Hand over the newest captured frame, if any, and this frame's uniforms."""
+        """Hand over the newest captured frame, if any, and this frame's uniforms.
+
+        The frame is uploaded here rather than in ``paintGL``. The overlay only
+        fades in once it has a picture, and Windows does not repaint a window
+        at zero opacity on every machine: on a Galaxy Book Pro 360 with Intel
+        Arc graphics ``paintGL`` never ran, so no picture arrived, so the
+        window never faded in, and the effect stayed invisible with no error.
+        """
         if frame is not None:
-            self._pending = frame
+            if self._program is not None and self.isValid():
+                self.makeCurrent()
+                try:
+                    if getattr(self, "_texture_dirty", False):
+                        self._allocate_texture()
+                    self._upload(frame)
+                finally:
+                    self.doneCurrent()
+            else:
+                self._pending = frame
         self._params = params
         self.update()
 
