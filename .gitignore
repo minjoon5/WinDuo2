@@ -30,11 +30,4 @@ skills-lock.json
 Thumbs.db
 desktop.ini
 
-.vercel
 .env*
-
-# Windhawk harness build output
-windhawk/harness/*.exe
-windhawk/harness/*.log
-windhawk/harness/*.png
-

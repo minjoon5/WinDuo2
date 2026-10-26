@@ -4,7 +4,7 @@ Close your laptop lid and the screen leans away, blurring and dimming as it goes
 
 Apple has a hinge to read. [Mac Duo](https://github.com/sumimakito/Mac-Duo) has the MacBook's lid angle sensor. Your laptop has neither, so WinDuo watches the webcam instead.
 
-**[winduo.baselashraf.com](https://winduo.baselashraf.com)** · Windows 10 (2004+) and 11, Windhawk, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
+Windows 10 (2004+) and 11, Windhawk, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
 
 ## Install
 
@@ -44,7 +44,7 @@ Adding those slides up would drift, so WinDuo never tries to know the real angle
 
 ## Windhawk
 
-[windhawk/winduo.wh.cpp](windhawk/winduo.wh.cpp) is a native C++ build of the same effect packaged as a [Windhawk](https://windhawk.net) mod. It runs in its own process, injects into nothing, and needs no Python. It has no calibration wizard; its readme explains how to tune the one number the wizard would measure. [windhawk/README.md](windhawk/README.md) covers building it outside Windhawk and submitting it.
+[windhawk/winduo.wh.cpp](windhawk/winduo.wh.cpp) is a native C++ build of the same effect packaged as a [Windhawk](https://windhawk.net) mod. It runs in its own process, injects into nothing, and needs no Python. It has no calibration wizard; its readme explains how to tune the one number the wizard would measure.
 
 ## Linux (Omarchy / Hyprland)
 
@@ -73,7 +73,3 @@ WinDuo is free for any noncommercial purpose — personal use, research, educati
 Built by **[Basel Ashraf](https://baselashraf.com)**.
 
 [Mac Duo](https://github.com/sumimakito/Mac-Duo) by [Makito](https://github.com/sumimakito) is the reference implementation, originally released under Apache 2.0. Its geometry, shader, and state machine are ported here rather than reinvented; [NOTICE](NOTICE) lists which files and explains how a noncommercial license here stays compatible with that. The webcam angle estimation is the new part, because the sensor Mac Duo reads is the part that is missing.
-
-## Support
-
-WinDuo is free and always will be. If it is worth a coffee: [Ko-fi](https://ko-fi.com/baselashraf) · [PayPal](https://paypal.me/baselashrafusd) · [Liberapay](https://liberapay.com/BaselAshraf81/donate) · [Airtm](https://airtm.me/theprofitking)
