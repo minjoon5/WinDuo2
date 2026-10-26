@@ -225,7 +225,7 @@ class SettingsWindow(QWidget):
         # --- Perspective
         layout.addWidget(SectionLabel("Perspective"))
         self._recession = SliderRow(
-            "Lean back", 0, 3, 1, suffix="\u00d7", decimals=1,
+            "Lean back", 0, 3, 0.6, suffix="\u00d7", decimals=1,
             help_text=(
                 "Degrees of lean per degree of closing. 1 holds the picture "
                 "still in the room."

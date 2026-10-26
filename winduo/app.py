@@ -256,7 +256,8 @@ class Engine(QObject):
             blur_floor=settings.blur_evenness,
             dim_floor=gradient.dim_hinge_floor,
             dim_reach=settings.dim_reach,
-            max_blur_radius=settings.max_blur_radius,
+            # The setting is in points; the shader works in device pixels.
+            max_blur_radius=settings.max_blur_radius * _pixel_ratio(),
             max_dim=settings.max_dim,
             hinge_glow=settings.hinge_glow,
             reflection_intensity=settings.reflection_intensity,
@@ -421,6 +422,18 @@ def _native_size() -> tuple[float, float]:
     rect = screen.geometry()
     ratio = screen.devicePixelRatio()
     return (float(rect.width()) * ratio, float(rect.height()) * ratio)
+
+
+def _pixel_ratio() -> float:
+    """Device pixels per point on the primary display.
+
+    The blur radius is set in points, so it looks the same at any scaling.
+    Applied in device pixels unscaled, a 150% display got two thirds of the
+    blur the setting asks for, which read as a weak blur on a Galaxy Book Pro
+    360.
+    """
+    screen = QGuiApplication.primaryScreen()
+    return float(screen.devicePixelRatio()) if screen is not None else 1.0
 
 
 def _picture_size(native: tuple[float, float], width_cap: int) -> tuple[int, int]:

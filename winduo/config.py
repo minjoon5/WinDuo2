@@ -89,8 +89,9 @@ class Settings:
     #: read as holding still in the room; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room.
-    recession: float = 1.0
+    #: 1.0 holds the picture still in the room. 0.6 because at 1.0 the picture
+    #: dropped away too quickly to follow on a Galaxy Book Pro 360.
+    recession: float = 0.6
     #: How far the upper part of the picture leans forward, toward the viewer,
     #: while the part near the hinge stays still in the room. 0 is a flat
     #: sheet; 1 brings the top edge parallel to the glass. A little of it keeps
