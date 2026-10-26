@@ -63,13 +63,3 @@ The Linux port has been unit tested but not yet run on real Omarchy hardware. Re
 ## Contributing
 
 `pip install -e ".[dev]"` then `pytest`. The tests need no camera, screen, or lid.
-
-## License
-
-WinDuo is free for any noncommercial purpose — personal use, research, education, hobby projects, all of it — under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use is not permitted without a separate agreement. Any copy or derivative must keep the required attribution to Basel Ashraf and to Mac Duo intact; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-## Credit
-
-Built by **[Basel Ashraf](https://baselashraf.com)**.
-
-[Mac Duo](https://github.com/sumimakito/Mac-Duo) by [Makito](https://github.com/sumimakito) is the reference implementation, originally released under Apache 2.0. Its geometry, shader, and state machine are ported here rather than reinvented; [NOTICE](NOTICE) lists which files and explains how a noncommercial license here stays compatible with that. The webcam angle estimation is the new part, because the sensor Mac Duo reads is the part that is missing.
