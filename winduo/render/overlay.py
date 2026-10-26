@@ -27,7 +27,13 @@ from winduo.render.shaders import FRAGMENT, VERTEX
 
 log = get_logger("overlay")
 
-__all__ = ["DepthOverlay", "FrameParams", "configure_surface", "flip_safe_geometry"]
+__all__ = [
+    "DepthOverlay",
+    "FrameParams",
+    "configure_surface",
+    "flip_safe_geometry",
+    "texture_layout",
+]
 
 #: Black margin around the picture, in points. Kept above the largest blur
 #: radius the settings allow, so the blur always reaches real black on every
@@ -141,6 +147,8 @@ class _DepthView(QOpenGLWidget):
         self._picture_scale = 1.0
         self._texture_size = (0, 0)
         self._inset = 0
+        self._padded_origin = (-PADDING_POINTS, -PADDING_POINTS)
+        self._padded_points = (0.0, 0.0)
         self._max_level = 0.0
 
         self._pending: np.ndarray | None = None
@@ -162,14 +170,9 @@ class _DepthView(QOpenGLWidget):
             if self._screen_size[0] > 0
             else 1.0
         )
-        padded_w = self._screen_size[0] + 2 * PADDING_POINTS
-        padded_h = self._screen_size[1] + 2 * PADDING_POINTS
-        self._padded_points = (padded_w, padded_h)
-        self._texture_size = (
-            max(int(round(padded_w * self._picture_scale)), 2),
-            max(int(round(padded_h * self._picture_scale)), 2),
+        self._texture_size, self._inset, self._padded_origin, self._padded_points = (
+            texture_layout(self._screen_size, self._picture_size)
         )
-        self._inset = int(round(PADDING_POINTS * self._picture_scale))
         self._max_level = float(
             int(math.floor(math.log2(max(self._texture_size))))
         )
@@ -294,7 +297,7 @@ class _DepthView(QOpenGLWidget):
         GL.glUniform1f(u["uProfileEnd"], params.profile.end)
         GL.glUniform1f(u["uProfileSlope"], params.profile.slope)
         GL.glUniform2f(u["uScreenSize"], *self._screen_size)
-        GL.glUniform2f(u["uPaddedOrigin"], -PADDING_POINTS, -PADDING_POINTS)
+        GL.glUniform2f(u["uPaddedOrigin"], *self._padded_origin)
         GL.glUniform2f(u["uPaddedSize"], *self._padded_points)
         GL.glUniform1f(
             u["uMaxRadius"], params.max_blur_radius * self._picture_scale
@@ -618,6 +621,34 @@ class DepthOverlay:
 
 
 # --- Helpers -------------------------------------------------------------
+
+
+def texture_layout(screen_size, picture_size):
+    """Size the padded texture from the picture, and the shader's mapping from it.
+
+    The texture is the picture plus a whole number of margin pixels on every
+    side, so a captured frame always fits exactly. Sizing it from the screen
+    instead, as this once did, rounds the two separately: a 2880x1800 screen
+    captured at 1600x1000 gave a 1733 pixel texture for a 1734 pixel need, and
+    every frame was rejected, leaving the effect invisible with no error.
+
+    The margin in points is then taken back from those whole pixels, so the
+    shader's mapping from screen to texture matches what was uploaded.
+
+    Returns the texture size, the inset in pixels, and the padded area's origin
+    and size in points.
+    """
+    screen_w, screen_h = float(screen_size[0]), float(screen_size[1])
+    picture_w, picture_h = int(picture_size[0]), int(picture_size[1])
+    scale_x = picture_w / screen_w if screen_w > 0 else 1.0
+    scale_y = picture_h / screen_h if screen_h > 0 else 1.0
+    inset = int(round(PADDING_POINTS * scale_x))
+    texture = (max(picture_w + 2 * inset, 2), max(picture_h + 2 * inset, 2))
+    pad_x = inset / scale_x if scale_x > 0 else PADDING_POINTS
+    pad_y = inset / scale_y if scale_y > 0 else PADDING_POINTS
+    origin = (-pad_x, -pad_y)
+    padded = (screen_w + 2 * pad_x, screen_h + 2 * pad_y)
+    return texture, inset, origin, padded
 
 
 def _build_program() -> int:
