@@ -107,7 +107,9 @@ class Settings:
     neutral_settle_tolerance: float = 1.5
     #: How long a lid stopped partway closed keeps the effect before its
     #: position becomes neutral and the effect eases out.
-    partial_hold_seconds: float = 4.0
+    #: 1 s: at 0.4 a pause to look ended the effect at once, and at 4 the
+    #: screen took too long to come back after a lid stopped partway.
+    partial_hold_seconds: float = 1.0
 
     # --- Estimator -------------------------------------------------------
     #: Estimator confidence below which the effect will not trigger.

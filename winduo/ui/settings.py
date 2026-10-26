@@ -282,7 +282,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._settle)
 
         self._hold = SliderRow(
-            "Hold a partly closed lid for", 0.4, 30.0, 4.0, suffix=" s", decimals=1,
+            "Hold a partly closed lid for", 0.4, 30.0, 1.0, suffix=" s", decimals=1,
             help_text=(
                 "How long the effect stays when you stop partway through closing, "
                 "before that position becomes the new neutral."
