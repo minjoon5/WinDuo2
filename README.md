@@ -25,7 +25,7 @@ To check that your laptop has a sensor WinDuo can read, run `python -m winduo --
 
 The effect is continuous, not a one-shot animation. It fades in once you have closed about 10°, grows as you keep closing, reaches full strength at about 85°, and holds there for the rest of the way down. Open back up and it reverses. Both thresholds are adjustable.
 
-The picture behaves like a sheet hinged at the bottom of the screen that stays where it is in the room while the glass turns under it, and tilts back as the lid closes. By default it leans back at 0.6° per degree of closing, and the tilt levels off at about 55° past the trigger instead of stretching the picture into a smear as the lid nears flat. *Lean back* and *Tilt limit* in the settings adjust both.
+The picture behaves like a sheet hinged at the bottom of the screen that stays where it is in the room while the glass turns under it, and tilts back as the lid closes. By default it leans back at 0.5° per degree of closing, and the tilt levels off at about 55° past the trigger instead of stretching the picture into a smear as the lid nears flat. *Lean back* and *Tilt limit* in the settings adjust both.
 
 The angle comes from the first of these the laptop offers:
 

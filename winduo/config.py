@@ -66,8 +66,10 @@ class Settings:
     #: still be faintly there at the end of a close, not vanish.
     max_dim: float = 0.85
     #: Height at which the dimming reaches full strength, as a fraction of the
-    #: screen height.
-    dim_reach: float = 0.5
+    #: screen height. 1 so the darkening peaks at the top edge and fades
+    #: smoothly all the way down: at 0.5 the whole upper half was equally dark,
+    #: and bright content near the top made the middle look the darker part.
+    dim_reach: float = 1.0
     #: Strength of a narrow specular line at the hinge edge, 0 to 1. The idea is
     #: adapted from macTilt's hinge highlight (github.com/lqSky7/
     #: iphone-duo-macos-animation, MIT): a real hinge catches a little light
@@ -87,9 +89,10 @@ class Settings:
     #: read as holding still in the room; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room. 0.6 because at 1.0 the picture
-    #: dropped away too quickly to follow on a Galaxy Book Pro 360.
-    recession: float = 0.6
+    #: 1.0 holds the picture still in the room. 0.5 because at 1.0, and still
+    #: slightly at 0.6, the picture dropped away too quickly to follow on a
+    #: Galaxy Book Pro 360.
+    recession: float = 0.5
     #: The most the picture tilts, in degrees past the trigger, however far the
     #: lid goes. The tilt follows the lid one for one at first, so the picture
     #: holds still in the room, then eases toward this. 0 turns the easing off

@@ -200,8 +200,11 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._dim)
 
         self._dim_reach = SliderRow(
-            "Dimming spread", 0.2, 1, 0.5, suffix="%", display_scale=100,
-            help_text="Everything above this height goes fully dark.",
+            "Dimming spread", 0.2, 1, 1.0, suffix="%", display_scale=100,
+            help_text=(
+                "Height where the darkening reaches full strength. 100 darkens "
+                "the top edge most and fades smoothly down to the hinge."
+            ),
         )
         self._dim_reach.changed.connect(lambda v: self._apply(dim_reach=v))
         layout.addWidget(self._dim_reach)
@@ -225,7 +228,7 @@ class SettingsWindow(QWidget):
         # --- Perspective
         layout.addWidget(SectionLabel("Perspective"))
         self._recession = SliderRow(
-            "Lean back", 0, 3, 0.6, suffix="\u00d7", decimals=1,
+            "Lean back", 0, 3, 0.5, suffix="\u00d7", decimals=1,
             help_text=(
                 "Degrees of lean per degree of closing. 1 holds the picture "
                 "still in the room."
