@@ -90,10 +90,10 @@ class Settings:
     #: read as holding still in the room; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room. 0.5 because at 1.0, and still
-    #: slightly at 0.6, the picture dropped away too quickly to follow on a
-    #: Galaxy Book Pro 360.
-    recession: float = 0.5
+    #: 1.0 holds the picture still in the room. 0.4 because at 1.0, and still
+    #: slightly at 0.6 and 0.5, the picture dropped away too quickly to follow
+    #: on a Galaxy Book Pro 360.
+    recession: float = 0.4
     #: The most the picture tilts, in degrees past the trigger, however far the
     #: lid goes. The tilt follows the lid one for one at first, so the picture
     #: holds still in the room, then eases toward this. 0 turns the easing off
@@ -107,9 +107,10 @@ class Settings:
     neutral_settle_tolerance: float = 1.5
     #: How long a lid stopped partway closed keeps the effect before its
     #: position becomes neutral and the effect eases out.
-    #: 1 s: at 0.4 a pause to look ended the effect at once, and at 4 the
-    #: screen took too long to come back after a lid stopped partway.
-    partial_hold_seconds: float = 1.0
+    #: 0.6 s: at 0.4 a pause to look ended the effect at once, and at 4, and
+    #: still slightly at 1, the screen took too long to come back after a lid
+    #: stopped partway.
+    partial_hold_seconds: float = 0.6
 
     # --- Estimator -------------------------------------------------------
     #: Estimator confidence below which the effect will not trigger.

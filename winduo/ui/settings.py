@@ -228,7 +228,7 @@ class SettingsWindow(QWidget):
         # --- Perspective
         layout.addWidget(SectionLabel("Perspective"))
         self._recession = SliderRow(
-            "Lean back", 0, 3, 0.5, suffix="\u00d7", decimals=1,
+            "Lean back", 0, 3, 0.4, suffix="\u00d7", decimals=1,
             help_text=(
                 "Degrees of lean per degree of closing. 1 holds the picture "
                 "still in the room."
@@ -282,7 +282,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._settle)
 
         self._hold = SliderRow(
-            "Hold a partly closed lid for", 0.4, 30.0, 1.0, suffix=" s", decimals=1,
+            "Hold a partly closed lid for", 0.4, 30.0, 0.6, suffix=" s", decimals=1,
             help_text=(
                 "How long the effect stays when you stop partway through closing, "
                 "before that position becomes the new neutral."

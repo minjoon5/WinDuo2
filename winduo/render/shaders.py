@@ -73,6 +73,35 @@ uniform float uOpacity;             // 0 to 1, the fade where windows cannot fad
 
 out vec4 fragColour;
 
+// A mip level alone is a box filter, and magnifying one draws its texels as
+// visible blocks: on a Galaxy Book Pro 360 the blur showed pixels. So the blur
+// reads one and a half levels finer and averages a disc of taps over it, Gaussian
+// weighted, which spreads to about the same width without the grid.
+#define BLUR_TAPS 16
+// A Vogel spiral: even coverage of the disc with no preferred direction.
+const vec2 DISC[BLUR_TAPS] = vec2[](
+    vec2( 0.265,  0.000), vec2(-0.339,  0.310), vec2( 0.052, -0.591), vec2( 0.427,  0.557),
+    vec2(-0.783, -0.139), vec2( 0.742, -0.472), vec2(-0.248,  0.923), vec2(-0.473, -0.911),
+    vec2( 1.027,  0.375), vec2(-1.068,  0.441), vec2( 0.515, -1.101), vec2( 0.381,  1.213),
+    vec2(-1.147, -0.665), vec2( 1.346, -0.296), vec2(-0.821,  1.168), vec2(-0.190, -1.464)
+);
+
+vec3 softBlur(vec2 uv, float level) {
+    if (level < 0.5) {
+        return textureLod(uPicture, uv, level).rgb;
+    }
+    float base = max(level - 1.5, 0.0);
+    vec2 step = exp2(base) * 2.0 / vec2(textureSize(uPicture, 0));
+    vec3 sum = vec3(0.0);
+    float total = 0.0;
+    for (int i = 0; i < BLUR_TAPS; ++i) {
+        float weight = exp(-dot(DISC[i], DISC[i]) * 0.8);
+        sum += textureLod(uPicture, uv + DISC[i] * step, base).rgb * weight;
+        total += weight;
+    }
+    return sum / total;
+}
+
 // The picture is stored as sRGB and sampled to linear light, so the dimming has
 // to be encoded back on the way out.
 vec3 linearToSrgb(vec3 linear) {
@@ -132,7 +161,7 @@ void main() {
     float blur = uBlurStrength * (uBlurFloor + (1.0 - uBlurFloor) * height);
     float level = clamp(log2(max(blur * uMaxRadius, 1.0)), 0.0, uMaxLevel);
 
-    vec3 colour = textureLod(uPicture, texCoord, level).rgb;
+    vec3 colour = softBlur(texCoord, level);
 
     // smoothstep rather than a clamped ratio, so the height where the dimming
     // reaches full strength leaves no visible seam across the picture.
