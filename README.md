@@ -4,12 +4,6 @@ Close your laptop lid and the screen leans away, blurring and dimming as it goes
 
 Apple has a hinge to read. [Mac Duo](https://github.com/sumimakito/Mac-Duo) has the MacBook's lid angle sensor. Your laptop has neither, so WinDuo watches the webcam instead.
 
-<p align="center">
-  <a href="https://winduo.baselashraf.com">
-    <img src="docs/demo.gif" alt="A laptop lid closing while the screen leans back, blurs and dims, rendered through WinDuo's own shader." width="270">
-  </a>
-</p>
-
 **[winduo.baselashraf.com](https://winduo.baselashraf.com)** · Windows 10 (2004+) and 11, Windhawk, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
 
 ## Install
@@ -68,7 +62,7 @@ The Linux port has been unit tested but not yet run on real Omarchy hardware. Re
 
 ## Contributing
 
-`pip install -e ".[dev]"` then `pytest`. The tests need no camera, screen, or lid. [CONTRIBUTING.md](CONTRIBUTING.md) has the tools for working on the estimator and the shader.
+`pip install -e ".[dev]"` then `pytest`. The tests need no camera, screen, or lid.
 
 ## License
 
