@@ -1,8 +1,9 @@
 """Smooths a low-rate angle signal up to the display refresh rate.
 
 Ported from ``CriticallyDampedSpring.swift`` (Apache 2.0, Copyright 2026
-Makito). The camera estimator publishes at roughly 30 Hz; the overlay draws at
-60 Hz or better.
+Makito). The sensor is polled at about 60 Hz and the overlay draws at 60 Hz or
+better, so this mostly smooths sensor noise and the steps of a hinge sensor
+that reports in whole degrees.
 """
 
 from __future__ import annotations

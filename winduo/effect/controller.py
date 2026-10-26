@@ -1,8 +1,7 @@
 """Decides when the effect runs, and drives it while it does.
 
-Ported from ``LidController.swift`` (Apache 2.0, Copyright 2026 Makito), with the
-sensor replaced by the camera estimator and absolute angles replaced by travel
-from neutral.
+Ported from ``LidController.swift`` (Apache 2.0, Copyright 2026 Makito), with
+absolute angles replaced by travel from neutral.
 
 One behaviour comes free from that swap and is worth pointing out, because Mac
 Duo needs a whole subsystem for it. Its "timeout" setting exists to end the
@@ -67,9 +66,9 @@ CLOSING_MEMORY = 1.2
 #: Below this the estimate is too noisy to extrapolate usefully.
 PREDICTION_SPEED_FLOOR = 30.0
 
-#: Camera pipeline latency the prediction adds on top of the sample's own age.
-#: Exposure, transfer, and correlation together land in this range.
-PREDICTION_LATENCY = 0.05
+#: Sensor latency the prediction adds on top of the sample's own age: about one
+#: report interval of the accelerometer or hinge sensor.
+PREDICTION_LATENCY = 0.02
 
 #: The overlay stays up at least this long once shown. Prediction can trigger
 #: the effect while the newest sample is still short of the threshold, and a
@@ -111,7 +110,7 @@ class Frame:
 class EffectController:
     """Watches travel and decides what the overlay shows.
 
-    Polling is deliberate rather than event-driven, so a stalled camera thread
+    Polling is deliberate rather than event-driven, so a stalled sensor thread
     cannot wedge the effect on screen: every decision is re-made from the newest
     sample on a fixed cadence, and a missing sample is itself a decision.
     """
@@ -176,7 +175,7 @@ class EffectController:
     # --- Input -----------------------------------------------------------
 
     def observe(self, sample: AngleSample | None, now: float | None = None) -> None:
-        """Take the newest estimate. ``None`` means the camera gave nothing."""
+        """Take the newest estimate. ``None`` means the sensor gave nothing."""
         now = time.monotonic() if now is None else now
         if sample is None:
             # An absent sample is not a still lid, it is an unknown one. Dropping
@@ -206,8 +205,8 @@ class EffectController:
     def _predicted_travel(self, now: float) -> float:
         """Where the lid is heading, not where the last sample saw it.
 
-        A camera sample is a frame old before it is even measured, and a lid
-        closing at 150 degrees per second covers 5 degrees in that time. Without
+        A sensor sample is a report interval old before it arrives, and a lid
+        closing at 150 degrees per second covers 3 degrees in that time. Without
         this the effect starts visibly late on a quick close.
         """
         if self._velocity < PREDICTION_SPEED_FLOOR:

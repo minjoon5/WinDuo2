@@ -71,7 +71,7 @@ class BlurGradient:
         should look like it moved fast, the way a real camera would blur it,
         rather than running the same fixed ramp a slow deliberate close does.
 
-        Dead-zoned below :data:`_MOTION_DEAD_ZONE` so camera jitter on an
+        Dead-zoned below :data:`_MOTION_DEAD_ZONE` so sensor jitter on an
         almost-still lid adds nothing, and saturates at
         :data:`_MOTION_SATURATION_SPEED` so an extreme slam does not blow the
         blur out past what the mip chain can resolve. Travel-driven blur and

@@ -26,9 +26,8 @@ jobs:
 
       - name: Remove OpenCV's unused video-file decoder before packaging
         # opencv_videoio_ffmpeg is ~29 MB and is only consulted by
-        # cv2.VideoCapture when opening a video *file*; this app only reads
-        # live camera frames through the DirectShow/Media Foundation backends
-        # in winduo/angle/camera.py, never a file, so the plugin is dead
+        # cv2.VideoCapture when opening a video *file*; this app only uses
+        # OpenCV to resize captured screen frames, so the plugin is dead
         # weight. It has to be deleted from cv2's own install directory before
         # PyInstaller runs: for a --onefile build everything is packed into
         # the exe during the build itself, so nothing is left in dist/
@@ -58,10 +57,11 @@ jobs:
         # cv2 and OpenGL still need --collect-all: both load compiled
         # extensions and, for OpenGL, GL functions via ctypes at runtime, which
         # PyInstaller's static import scan cannot see coming. OpenCV's own
-        # FFmpeg video-file plugin is excluded because the app only reads live
-        # camera frames through the DirectShow/Media Foundation backends in
-        # winduo/angle/camera.py; it never opens a video file, so that decoder
-        # is dead weight.
+        # FFmpeg video-file plugin is excluded because the app never opens a
+        # video file, so that decoder is dead weight.
+        #
+        # winrt is collected whole: the sensor projections are imported on the
+        # sensor thread, inside functions, where the static scan does not look.
         #
         # numpy needs the same --collect-all: cv2 imports it at C level, and
         # PyInstaller's static scan misses numpy's compiled extension
@@ -84,6 +84,7 @@ jobs:
           --collect-all OpenGL
           --collect-all dxcam
           --collect-all numpy
+          --collect-all winrt
           --copy-metadata numpy
           --exclude-module PyQt6.QtQml
           --exclude-module PyQt6.QtQuick
@@ -118,7 +119,7 @@ jobs:
           winduo/__main__.py
 
       - name: Check it starts
-        # --version exits before any window, camera, or GPU work, so it is a real
+        # --version exits before any window, sensor, or GPU work, so it is a real
         # check that the bundle imports cleanly on a machine with no dev setup.
         run: ./dist/WinDuo.exe --version
 

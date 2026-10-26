@@ -1,7 +1,7 @@
-"""Wiring. Owns the camera, the capture, the overlay, and the clock that drives them.
+"""Wiring. Owns the lid sensor, the capture, the overlay, and the clock that drives them.
 
 The loop is deliberately simple: one timer, re-reading the newest estimate and
-re-deciding from scratch each time. Nothing latches, so a stalled camera thread
+re-deciding from scratch each time. Nothing latches, so a stalled sensor thread
 or a dropped capture backend cannot leave the effect stuck on screen.
 """
 
@@ -13,8 +13,9 @@ import time
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
 
-from winduo.angle.camera import CameraAngleSource
+from winduo.angle.estimator import AngleSample
 from winduo.angle.lidswitch import LidSwitch
+from winduo.angle.sensor import SensorAngleSource
 from winduo.config import Store
 from winduo.effect.controller import EffectController
 from winduo.log import get_logger
@@ -75,12 +76,8 @@ class Engine(QObject):
 
     #: Emitted when the status the interface shows may have changed.
     changed = pyqtSignal()
-    #: Forwards the OS lid switch. Exists so the calibration wizard has a way to
-    #: hear "the lid just shut" without owning a second LidSwitch of its own;
-    #: Windows only reports one open/shut pair of callbacks per registration,
-    #: and this fans that single signal out to whichever Qt object wants it,
-    #: auto-queued onto the receiver's thread because pyqtSignal crossing
-    #: threads does that safely.
+    #: Forwards the OS lid switch, auto-queued onto each receiver's thread
+    #: because pyqtSignal crossing threads does that safely.
     lid_state_changed = pyqtSignal(bool)
 
     #: How long the capture keeps running after the lid stops moving. Long
@@ -92,7 +89,7 @@ class Engine(QObject):
         super().__init__()
         self.store = store
         self.controller = EffectController(store.settings)
-        self.camera = CameraAngleSource(store.settings, store.calibration)
+        self.sensor = SensorAngleSource(store.settings)
         self.overlay = DepthOverlay()
         self.capture: ScreenCapture | None = None
         self.lid = LidSwitch(self._on_lid_change)
@@ -117,7 +114,7 @@ class Engine(QObject):
         self._running = True
         self._note_screen()
         self._warm_overlay()
-        self.camera.start()
+        self.sensor.start()
         self.lid.start()
         self._timer.start(int(self.controller.poll_interval * 1000))
         screen = QGuiApplication.primaryScreen()
@@ -132,7 +129,7 @@ class Engine(QObject):
         self._timer.stop()
         self._teardown_effect()
         self.overlay.destroy()
-        self.camera.stop()
+        self.sensor.stop()
         self.lid.stop()
         self._unsubscribe()
         log.info("engine stopped")
@@ -144,11 +141,11 @@ class Engine(QObject):
         """One sentence naming whatever is stopping the effect, or empty."""
         if self._problem:
             return self._problem
-        status = self.camera.status()
+        status = self.sensor.status()
         if status.problem:
             return status.problem
         if not status.running:
-            return "Starting the camera."
+            return "Starting the lid sensor."
         if sys.platform == "win32" and not win32.supports_capture_exclusion():
             return (
                 "Windows 10 version 2004 or later is needed to keep the effect "
@@ -190,7 +187,7 @@ class Engine(QObject):
         if self._preview is not None:
             self._drive_preview(now)
         else:
-            self.controller.observe(self.camera.latest(), now)
+            self.controller.observe(self.sensor.latest(), now)
 
         frame = self.controller.step(now)
 
@@ -223,8 +220,6 @@ class Engine(QObject):
             log.debug("preview sweep finished")
             self._preview = None
             return
-        from winduo.angle.estimator import AngleSample
-
         self.controller.observe(
             AngleSample(
                 travel=travel,
@@ -391,10 +386,8 @@ class Engine(QObject):
         self.lid_state_changed.emit(is_open)
 
     def _settings_changed(self) -> None:
-        self.controller.retune(
-            self.store.settings, self.store.calibration.neutral_angle_estimate
-        )
-        self.camera.retune(self.store.settings, self.store.calibration)
+        self.controller.retune(self.store.settings)
+        self.sensor.retune(self.store.settings)
         if not self.store.settings.enabled and self.controller.is_active:
             self.controller.suspend()
             self.controller.resume()

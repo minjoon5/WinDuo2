@@ -14,7 +14,6 @@ from winduo.config import Store
 from winduo.log import get_logger
 from winduo.ui.settings import SettingsWindow
 from winduo.ui.theme import tray_icon
-from winduo.ui.wizard import CalibrationWizard
 
 log = get_logger("tray")
 
@@ -28,12 +27,7 @@ class TrayController(QObject):
         self.engine = engine
 
         self._settings: SettingsWindow | None = None
-        self._wizard: CalibrationWizard | None = None
         self._was_active = False
-        #: True between the first-run wizard opening and it closing, so the
-        #: settings window is shown once on a fresh install and not again every
-        #: time somebody recalibrates.
-        self._first_run = False
 
         self.icon = QSystemTrayIcon(tray_icon(False))
         self.icon.setToolTip("WinDuo")
@@ -50,17 +44,8 @@ class TrayController(QObject):
         self._tooltip.start()
         self._refresh()
 
-        # First run: open the wizard rather than leaving a tray icon to be
-        # discovered. Nobody installs this to go looking for a menu, and the
-        # wizard's first panel is also where the camera indicator gets
-        # explained, so it is the right place to land.
-        if not self.store.calibration.captured_at:
-            self._first_run = True
-            QTimer.singleShot(600, self.open_wizard)
-            return
-
-        if not self.store.settings.has_seen_camera_notice:
-            self._announce_camera()
+        if not self.store.settings.has_seen_intro:
+            self._introduce()
 
     # --- Menu ------------------------------------------------------------
 
@@ -80,10 +65,6 @@ class TrayController(QObject):
         menu.addAction(preview)
 
         menu.addSeparator()
-
-        calibrate = QAction("Calibrate\u2026", menu)
-        calibrate.triggered.connect(self.open_wizard)
-        menu.addAction(calibrate)
 
         settings = QAction("Settings\u2026", menu)
         settings.triggered.connect(self.open_settings)
@@ -108,57 +89,27 @@ class TrayController(QObject):
 
     def open_settings(self) -> None:
         if self._settings is None:
-            self._settings = SettingsWindow(self.store, self.engine, self.open_wizard)
+            self._settings = SettingsWindow(self.store, self.engine)
         self._settings.show()
         self._settings.raise_()
         self._settings.activateWindow()
 
-    def open_wizard(self) -> None:
-        if self._wizard is None:
-            self._wizard = CalibrationWizard(self.store, self.engine)
-            self._wizard.finished.connect(self._on_wizard_finished)
-        self._wizard.start()
+    def _introduce(self) -> None:
+        """First run: say where the app lives, then show its controls once.
 
-    def _on_wizard_finished(self, saved: bool) -> None:
-        self.store.update(has_seen_camera_notice=True)
-        if saved:
-            self.icon.showMessage(
-                "WinDuo is ready",
-                "Close the lid and the screen will lean away. WinDuo lives in "
-                "the notification area; right-click it for settings.",
-                tray_icon(True),
-                6000,
-            )
-        else:
-            self.icon.showMessage(
-                "WinDuo is running uncalibrated",
-                "The effect will still work, using an estimated scale. Calibrate "
-                "from the notification area whenever you want it to match your "
-                "own lid.",
-                tray_icon(False),
-                6000,
-            )
-        if self._settings is not None:
-            self._settings._load_from_store()
-
-        # On a fresh install, show the settings window once the wizard is done.
-        # A tray icon and a balloon are both easy to miss, so without this the
-        # app looks like it has no controls at all: the effect just happens, and
-        # every slider in it stays undiscovered. Delayed slightly so it opens
-        # after the wizard has actually closed rather than behind it.
-        if self._first_run:
-            self._first_run = False
-            QTimer.singleShot(700, self.open_settings)
-
-    def _announce_camera(self) -> None:
-        self.store.update(has_seen_camera_notice=True)
+        The app has no main window, and a tray icon and a balloon are both easy
+        to miss, so without the settings window the effect would just happen
+        and every slider in it would stay undiscovered.
+        """
+        self.store.update(has_seen_intro=True)
         self.icon.showMessage(
-            "WinDuo is watching the lid",
-            "The camera indicator stays lit while WinDuo runs. Frames are compared "
-            "and discarded; nothing is recorded or sent anywhere.",
-            tray_icon(False),
-            8000,
+            "WinDuo is ready",
+            "Close the lid and the screen will lean away. WinDuo lives in the "
+            "notification area; right-click it for settings.",
+            tray_icon(True),
+            6000,
         )
+        QTimer.singleShot(700, self.open_settings)
 
     # --- Status ----------------------------------------------------------
 
@@ -179,9 +130,9 @@ class TrayController(QObject):
         elif active:
             summary = "Running"
         else:
-            sample = self.engine.camera.latest(max_age=1.0)
+            sample = self.engine.sensor.latest(max_age=1.0)
             if sample is None:
-                summary = "Waiting for the camera"
+                summary = "Waiting for the lid sensor"
             elif sample.at_rest:
                 summary = "Resting, ready"
             else:

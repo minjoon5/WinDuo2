@@ -2,7 +2,8 @@
 
 ``python -m winduo`` starts the app. ``--preview`` plays the effect once and
 exits, which is the quickest way to see whether the renderer works on a machine
-without involving a camera or a lid at all.
+without involving the lid at all. ``--sensors`` does the opposite: it prints
+what the lid sensor reads, with no window, to check that this machine has one.
 """
 
 from __future__ import annotations
@@ -28,12 +29,12 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--preview",
         action="store_true",
-        help="play the effect once and exit, without using the camera",
+        help="play the effect once and exit, without using the lid sensor",
     )
     parser.add_argument(
-        "--calibrate",
+        "--sensors",
         action="store_true",
-        help="open the calibration wizard at launch",
+        help="print the lid sensor's readings for 20 seconds and exit",
     )
     parser.add_argument(
         "--settings",
@@ -54,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if options.sensors:
+        return _print_sensor()
     if sys.platform.startswith("linux"):
         import os
 
@@ -104,9 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     engine.start()
     tray.show()
 
-    if options.calibrate:
-        QTimer.singleShot(300, tray.open_wizard)
-    elif options.settings:
+    if options.settings:
         QTimer.singleShot(0, tray.open_settings)
 
     # Ctrl+C from a terminal, which Qt otherwise swallows.
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_preview(app, engine) -> int:
-    """Play the scripted sweep once, then quit. No camera, no lid."""
+    """Play the scripted sweep once, then quit. No sensor, no lid."""
     from PyQt6.QtCore import QTimer
 
     engine.start()
@@ -135,6 +136,45 @@ def _run_preview(app, engine) -> int:
     QTimer.singleShot(5200, finish)
     log.info("running the preview sweep")
     return app.exec()
+
+
+def _print_sensor(seconds: float = 20.0) -> int:
+    """Show what the lid sensor reports. Close and open the lid to watch it move."""
+    import time
+
+    from winduo.angle.sensor import SensorAngleSource
+    from winduo.config import Settings
+
+    source = SensorAngleSource(Settings())
+    source.start()
+    print("Looking for a lid sensor. Move the lid to see the readings change.")
+    ends = time.monotonic() + seconds
+    shown = ""
+    try:
+        while time.monotonic() < ends:
+            time.sleep(0.2)
+            status = source.status()
+            if status.problem:
+                print(status.problem)
+                return 1
+            if status.name and status.name != shown:
+                shown = status.name
+                print(f"Using the {shown}.")
+            sample = source.latest()
+            if sample is not None:
+                print(
+                    f"angle {sample.absolute_angle:6.1f}\u00b0   "
+                    f"travel {sample.travel:6.1f}\u00b0   "
+                    f"speed {sample.velocity:7.1f}\u00b0/s   "
+                    f"confidence {sample.confidence:4.2f}   "
+                    f"{'resting' if sample.at_rest else 'moving'}   "
+                    f"{status.rate:3.0f}/s"
+                )
+    except KeyboardInterrupt:
+        pass
+    finally:
+        source.stop()
+    return 0
 
 
 if __name__ == "__main__":

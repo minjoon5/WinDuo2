@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "winduo"
 version = "0.1.3"
-description = "Lean the screen away as the laptop lid closes, using the webcam instead of a hinge sensor"
+description = "Lean the screen away as the laptop lid closes, read from the lid sensor"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "PolyForm-Noncommercial-1.0.0" }
 authors = [{ name = "Basel Ashraf", email = "hello@baselashraf.com" }]
-keywords = ["windows", "overlay", "opengl", "computer-vision", "laptop", "lid-angle"]
+keywords = ["windows", "overlay", "opengl", "laptop", "lid-angle", "accelerometer"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
@@ -36,6 +36,9 @@ dependencies = [
     "numpy>=1.26,<3",
     "dxcam>=0.3; sys_platform == 'win32'",
     "mss>=9.0",
+    "winrt-runtime>=2.0; sys_platform == 'win32'",
+    "winrt-Windows.Foundation>=2.0; sys_platform == 'win32'",
+    "winrt-Windows.Devices.Sensors>=2.0; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

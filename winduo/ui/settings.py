@@ -35,11 +35,10 @@ __all__ = ["SettingsWindow"]
 class SettingsWindow(QWidget):
     """A single scrolling column. No tabs; there is not enough here to hide."""
 
-    def __init__(self, store: Store, engine, on_calibrate, parent=None) -> None:
+    def __init__(self, store: Store, engine, parent=None) -> None:
         super().__init__(parent)
         self.store = store
         self.engine = engine
-        self._on_calibrate = on_calibrate
         self._applying = False
 
         self.setWindowTitle("WinDuo")
@@ -95,7 +94,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._reading_caption)
 
         self._confidence = HoldMeter()
-        self._confidence.setToolTip("How well the camera can currently read the lid")
+        self._confidence.setToolTip("How far the current lid reading can be trusted")
         layout.addWidget(self._confidence)
 
         self._problem = QLabel()
@@ -137,24 +136,21 @@ class SettingsWindow(QWidget):
         )
         layout.addLayout(switches)
 
-        # --- Calibration
-        layout.addWidget(SectionLabel("Calibration"))
-        self._calibration_state = QLabel()
-        self._calibration_state.setProperty("role", "notice")
-        self._calibration_state.setWordWrap(True)
-        self._calibration_state.setFont(ui_font(8))
-        layout.addWidget(self._calibration_state)
+        # --- Sensor
+        layout.addWidget(SectionLabel("Sensor"))
+        self._sensor_state = QLabel()
+        self._sensor_state.setProperty("role", "notice")
+        self._sensor_state.setWordWrap(True)
+        self._sensor_state.setFont(ui_font(8))
+        layout.addWidget(self._sensor_state)
 
-        calibrate_row = QHBoxLayout()
-        calibrate_row.setContentsMargins(0, 0, 0, 0)
-        calibrate = QPushButton("Calibrate")
-        calibrate.clicked.connect(self._on_calibrate)
-        calibrate_row.addWidget(calibrate)
+        preview_row = QHBoxLayout()
+        preview_row.setContentsMargins(0, 0, 0, 0)
         preview = QPushButton("Preview the effect")
         preview.clicked.connect(self.engine.run_preview)
-        calibrate_row.addWidget(preview)
-        calibrate_row.addStretch(1)
-        layout.addLayout(calibrate_row)
+        preview_row.addWidget(preview)
+        preview_row.addStretch(1)
+        layout.addLayout(preview_row)
 
         # --- Start
         layout.addWidget(SectionLabel("How it follows the lid"))
@@ -267,11 +263,14 @@ class SettingsWindow(QWidget):
         self._tilt_limit.changed.connect(lambda v: self._apply(tilt_limit=v))
         layout.addWidget(self._tilt_limit)
 
-        # --- Camera
-        layout.addWidget(SectionLabel("Camera"))
+        # --- Reading
+        layout.addWidget(SectionLabel("Reading"))
         self._confidence_floor = SliderRow(
             "Required confidence", 0, 0.95, 0.35, suffix="%", display_scale=100,
-            help_text="The effect stays off when the camera reads the lid less clearly than this.",
+            help_text=(
+                "The effect stays off below this, such as while the laptop is "
+                "being carried or stands on its side."
+            ),
         )
         self._confidence_floor.changed.connect(
             lambda v: self._apply(confidence_floor=v)
@@ -387,26 +386,10 @@ class SettingsWindow(QWidget):
             self._render_width.set_value(settings.render_width_cap or 1600)
         finally:
             self._applying = False
-        self._refresh_calibration()
 
     def _reset(self) -> None:
         self.store.reset_settings()
         self._load_from_store()
-
-    def _refresh_calibration(self) -> None:
-        calibration = self.store.calibration
-        if calibration.captured_at:
-            when = calibration.captured_at.replace("T", " at ").replace("+00:00", " UTC")
-            self._calibration_state.setText(
-                f"Measured {when}. A closing lid reads about "
-                f"{1 / calibration.degrees_per_pixel:.1f} pixels per degree."
-            )
-        else:
-            self._calibration_state.setText(
-                "Not calibrated yet, so the scale is estimated from a typical "
-                "camera. Calibrating takes about twenty seconds and makes the "
-                "effect start at the angle you actually want."
-            )
 
     def _refresh_status(self) -> None:
         problem = self.engine.problem
@@ -416,11 +399,19 @@ class SettingsWindow(QWidget):
         else:
             self._problem.hide()
 
-        sample = self.engine.camera.latest(max_age=1.0)
+        status = self.engine.sensor.status()
+        if status.running:
+            self._sensor_state.setText(
+                f"Reading the lid from the {status.name}, {status.rate:.0f} times a second."
+            )
+        else:
+            self._sensor_state.setText(status.problem or "Looking for a lid sensor.")
+
+        sample = self.engine.sensor.latest(max_age=1.0)
         if sample is None:
             self._reading.setText("--")
             self._confidence.set_progress(0.0)
-            self._reading_caption.setText("Waiting for the camera")
+            self._reading_caption.setText("Waiting for the lid sensor")
             return
 
         self._reading.setText(f"{max(sample.travel, 0.0):.1f}\u00b0")

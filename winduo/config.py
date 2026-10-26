@@ -1,12 +1,4 @@
-"""User settings and the calibration record, persisted as JSON.
-
-Two files under ``%APPDATA%\\WinDuo``:
-
-- ``config.json``, everything the settings window can change.
-- ``calibration.json``, what the wizard measured. Separate because it is
-  hardware truth rather than taste, and resetting settings must not throw it
-  away.
-"""
+"""User settings, persisted as JSON in ``config.json`` under ``%APPDATA%\\WinDuo``."""
 
 from __future__ import annotations
 
@@ -21,10 +13,9 @@ from winduo.log import APP_DIR, get_logger
 
 log = get_logger("config")
 
-__all__ = ["Calibration", "Settings", "Store"]
+__all__ = ["Settings", "Store"]
 
 CONFIG_PATH = APP_DIR / "config.json"
-CALIBRATION_PATH = APP_DIR / "calibration.json"
 
 
 @dataclass
@@ -118,7 +109,6 @@ class Settings:
     neutral_settle_tolerance: float = 1.5
 
     # --- Estimator -------------------------------------------------------
-    camera_index: int = 0
     #: Estimator confidence below which the effect will not trigger.
     confidence_floor: float = 0.35
     #: Capture the screen no wider than this, in pixels. The picture is
@@ -130,8 +120,8 @@ class Settings:
     launch_at_login: bool = False
     #: Draw the live travel reading in the tray tooltip.
     show_reading: bool = True
-    #: Warn once that the camera indicator will light while armed.
-    has_seen_camera_notice: bool = False
+    #: The first-run introduction has been shown.
+    has_seen_intro: bool = False
 
     def clamped(self) -> Settings:
         """A copy with every value inside the range the interface offers."""
@@ -152,7 +142,6 @@ class Settings:
         out.neutral_settle_seconds = _clamp(out.neutral_settle_seconds, 0.15, 3.0)
         out.neutral_settle_tolerance = _clamp(out.neutral_settle_tolerance, 0.3, 6.0)
         out.confidence_floor = _clamp(out.confidence_floor, 0.0, 0.95)
-        out.camera_index = int(_clamp(out.camera_index, 0, 16))
         out.render_width_cap = int(_clamp(out.render_width_cap, 0, 7680))
         return out
 
@@ -173,83 +162,14 @@ def distance_from_perspective(perspective: float) -> float:
     return FARTHEST_EYE - _clamp(perspective, 0.0, 1.0) * (FARTHEST_EYE - NEAREST_EYE)
 
 
-@dataclass
-class Calibration:
-    """What the wizard measured about this particular laptop and camera.
-
-    One number carries the effect: how many degrees of lid travel one pixel of
-    vertical image shift represents. The rest is provenance, so the interface
-    can say when it was measured and on what.
-    """
-
-    #: Degrees of lid rotation per pixel of vertical shift, at the correlation
-    #: resolution named by ``track_width``. Zero means uncalibrated.
-    degrees_per_pixel: float = 0.0
-    #: Frame width the shift was measured at. Shifts scale with it, so a
-    #: calibration taken at one width is meaningless at another without this.
-    track_width: int = 0
-    #: A second-order term, fitted from the halfway anchor. Absorbs the tangent
-    #: nonlinearity and the parallax from the camera swinging on its arc.
-    curvature: float = 0.0
-    #: Estimated absolute angle at the position the user called normal viewing.
-    #: Only ever used to place the eye for the perspective, which is forgiving.
-    neutral_angle_estimate: float = 0.0
-    #: Total travel the wizard saw between normal viewing and closed.
-    measured_span: float = 0.0
-    camera_name: str = ""
-    captured_at: str = ""
-
-    @property
-    def is_calibrated(self) -> bool:
-        return self.degrees_per_pixel > 0.0 and self.track_width > 0
-
-    def travel_for_shift(self, shift_px: float, track_width: int) -> float:
-        """Convert accumulated vertical shift in pixels into degrees of travel.
-
-        Positive shift means the image moved down the frame, which is what
-        closing the lid does: the camera pitches forward, so the scene rises out
-        of the top of the frame and everything below it slides up. The sign
-        convention is settled in the estimator; this only scales.
-        """
-        if not self.is_calibrated:
-            return 0.0
-        # A shift measured at a different width is proportionally different.
-        scaled = shift_px * (self.track_width / max(track_width, 1))
-        return scaled * self.degrees_per_pixel * (1.0 + self.curvature * abs(scaled))
-
-
-DEFAULT_TRACK_WIDTH = 320
-#: What one pixel of shift is worth before anyone calibrates, from a 75 degree
-#: horizontal field of view at 320 pixels wide. Close enough that the effect
-#: works out of the box, wrong enough to be worth the wizard.
-FALLBACK_DEGREES_PER_PIXEL = 0.269
-
-
-def fallback_calibration() -> Calibration:
-    return Calibration(
-        degrees_per_pixel=FALLBACK_DEGREES_PER_PIXEL,
-        track_width=DEFAULT_TRACK_WIDTH,
-        neutral_angle_estimate=100.0,
-        camera_name="estimated from a typical field of view",
-    )
-
-
 class Store:
-    """Loads, saves, and broadcasts changes to settings and calibration."""
+    """Loads, saves, and broadcasts changes to settings."""
 
-    def __init__(
-        self,
-        config_path: Path = CONFIG_PATH,
-        calibration_path: Path = CALIBRATION_PATH,
-    ) -> None:
+    def __init__(self, config_path: Path = CONFIG_PATH) -> None:
         self._config_path = config_path
-        self._calibration_path = calibration_path
         self._lock = threading.RLock()
         self._listeners: list[Callable[[], None]] = []
         self.settings = _load(config_path, Settings).clamped()
-        self.calibration = _load(calibration_path, Calibration)
-        if not self.calibration.is_calibrated:
-            self.calibration = fallback_calibration()
 
     # --- Change notification --------------------------------------------
 
@@ -289,22 +209,10 @@ class Store:
         self._notify()
 
     def reset_settings(self) -> None:
-        """Back to factory values. Leaves the calibration alone."""
+        """Back to factory values."""
         with self._lock:
             self.settings = Settings()
             _save(self._config_path, self.settings)
-        self._notify()
-
-    def save_calibration(self, calibration: Calibration) -> None:
-        with self._lock:
-            self.calibration = calibration
-            _save(self._calibration_path, calibration)
-        self._notify()
-
-    def clear_calibration(self) -> None:
-        with self._lock:
-            self.calibration = fallback_calibration()
-            self._calibration_path.unlink(missing_ok=True)
         self._notify()
 
 

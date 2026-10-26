@@ -1,12 +1,10 @@
-"""The one piece of real hardware truth available: the operating system's lid switch.
+"""The operating system's lid switch.
 
 Windows knows when the lid is shut, and broadcasts it through
 ``GUID_LIDSWITCH_STATE_CHANGE``. That is binary rather than an angle, so it
-cannot drive the effect, but it is drift-free, instant, and free. Two uses:
-
-- It ends the calibration sweep at exactly zero degrees.
-- It ends the effect, because the display is about to go off anyway and a warped
-  final frame should not be what comes back on wake.
+cannot drive the effect, but it is instant and free. It ends the effect,
+because the display is about to go off anyway and a warped final frame should
+not be what comes back on wake.
 
 Implemented as a message-only window on its own thread. Coupling this to the Qt
 event loop would work, but a hidden window inside the widget hierarchy is one

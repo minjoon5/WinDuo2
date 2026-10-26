@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 __all__ = ["DepthGeometry", "DEFAULT_NEUTRAL_ANGLE", "Profile", "PROFILE_SAMPLES"]
 
-# Where an uncalibrated lid is assumed to be resting, in degrees. Only the
+# Where a lid is assumed to be resting, in degrees. Only the
 # perspective placement of the eye depends on this, and it is forgiving: the
 # effect itself is driven by travel from neutral, not by absolute angle.
 DEFAULT_NEUTRAL_ANGLE = 100.0

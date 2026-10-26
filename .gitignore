@@ -13,8 +13,6 @@ htmlcov/
 tests/.scratch/
 .scratch-run/
 
-# Recorded camera clips. Local measurement material, not source.
-clips/
 
 # The reference implementation, cloned for reading. Not vendored.
 mac-duo-ref/

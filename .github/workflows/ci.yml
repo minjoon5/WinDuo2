@@ -28,7 +28,7 @@ jobs:
         run: ruff check winduo tests
 
       - name: Test
-        # The suite needs no camera, no display, and no lid, which is the whole
+        # The suite needs no sensor and no lid, which is the whole
         # reason the estimator takes readings as arguments.
         run: pytest
 
