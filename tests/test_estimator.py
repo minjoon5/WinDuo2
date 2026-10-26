@@ -88,6 +88,20 @@ class TestTravel:
         sample = driver.feed([2.0] * 12)
         assert sample.velocity == pytest.approx(120.0, rel=0.02)
 
+    def test_coming_to_rest_after_opening_is_not_a_close(self):
+        # Measured on a Galaxy Book: opening 45 degrees past neutral and
+        # stopping re-zeroed travel from -45 to 0 in one reading, which a fit
+        # over travel reported as a 303 degree per second close.
+        driver = Driver(settle_seconds=0.4)
+        driver.settle()
+        driver.feed([-0.5] * 90)
+        speeds = []
+        for _ in range(60):
+            speeds.append(driver.feed([0.0]).velocity)
+        assert driver.sample.at_rest
+        assert driver.sample.travel == pytest.approx(0.0, abs=1e-6)
+        assert max(speeds) < 1.0
+
     def test_a_still_lid_has_no_velocity(self):
         assert Driver().settle().velocity == pytest.approx(0.0, abs=1e-9)
 

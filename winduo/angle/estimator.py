@@ -112,7 +112,7 @@ class TravelEstimator:
         travel = self._neutral - angle
         sample = AngleSample(
             travel=travel,
-            velocity=self._velocity(travel, now),
+            velocity=self._velocity(angle, now),
             confidence=self._confidence,
             timestamp=now,
             at_rest=self._at_rest,
@@ -209,14 +209,21 @@ class TravelEstimator:
         self._at_rest = True
         self._neutral = centre
 
-    def _velocity(self, travel: float, now: float) -> float:
-        """Least-squares slope over a short window, in degrees per second.
+    def _velocity(self, angle: float, now: float) -> float:
+        """Least-squares closing speed over a short window, in degrees per second.
+
+        Fitted to the angle rather than to travel. Travel jumps whenever neutral
+        re-zeros, and a lid opened 45 degrees past neutral that then comes to
+        rest drops its travel from -45 to 0 in one reading: fitted to travel,
+        that reads as a 300 degree per second close and starts the effect on a
+        lid that was being opened. The angle never jumps.
 
         A slope beats successive differences here: differencing amplifies the
         sensor's noise, fitting averages it away.
         """
         history = self._history
-        history.append((now, travel))
+        # Negated so that closing, which lowers the angle, is positive.
+        history.append((now, -angle))
         while len(history) > 3 and history[0][0] < now - self._VELOCITY_WINDOW:
             history.popleft()
         if len(history) < 3:
