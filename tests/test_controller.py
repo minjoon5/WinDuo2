@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from winduo.angle.estimator import AngleSample
-from winduo.config import Settings
-from winduo.effect.controller import (
+from winduo2.angle.estimator import AngleSample
+from winduo2.config import Settings
+from winduo2.effect.controller import (
     CLOSING_MEMORY,
     MINIMUM_DURATION,
     EffectController,
@@ -320,7 +320,7 @@ class TestFrames:
     def test_the_preview_sweep_reaches_the_same_end_as_a_real_close(self):
         # The preview is the only way most people will judge the look, so it
         # has to arrive at the state a real close arrives at, not short of it.
-        from winduo.app import PreviewSweep
+        from winduo2.app import PreviewSweep
 
         settings = Settings(trigger_travel=8.0, full_effect_travel=40.0)
         sweep = PreviewSweep(settings.trigger_travel, settings.full_effect_travel)
@@ -415,7 +415,7 @@ class TestEaseOut:
     def test_the_return_eases_in_and_out_over_the_set_time(self):
         # The spring snapped back in about 0.3 s and looked abrupt. The return
         # now starts gently, ends gently, and never reverses.
-        from winduo.effect.controller import CLOSING_OUT_DURATION
+        from winduo2.effect.controller import CLOSING_OUT_DURATION
 
         controller = EffectController(Settings())
         now = 0.0

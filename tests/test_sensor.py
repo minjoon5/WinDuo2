@@ -7,9 +7,9 @@ import time
 
 import pytest
 
-from winduo.angle import sensor
-from winduo.angle.sensor import SensorAngleSource, lid_angle_from_gravity
-from winduo.config import Settings
+from winduo2.angle import sensor
+from winduo2.angle.sensor import SensorAngleSource, lid_angle_from_gravity
+from winduo2.config import Settings
 
 
 def gravity_for(angle: float) -> tuple[float, float, float]:
@@ -60,9 +60,9 @@ class TestLinux:
     def test_reads_the_display_accelerometer_not_the_base(self, tmp_path):
         g = sensor.GRAVITY
         # IIO convention: +1 g up the screen when it is upright.
-        _iio(tmp_path, "iio:device0", "accel-base", 0, 0, g)
-        _iio(tmp_path, "iio:device1", "accel-display", 0, g, 0)
-        reader = sensor._LinuxAccelerometer.open(tmp_path)
+        _iio(tmp_path, "device0", "accel-base", 0, 0, g)
+        _iio(tmp_path, "device1", "accel-display", 0, g, 0)
+        reader = sensor._LinuxAccelerometer.open(tmp_path, prefix="device")
         angle, confidence = reader.read()
         assert angle == pytest.approx(90.0)
         assert confidence == pytest.approx(1.0)
@@ -71,19 +71,19 @@ class TestLinux:
         # A driver that reports Windows-style, -1 g up an upright screen.
         _, y, z = gravity_for(110.0)
         g = sensor.GRAVITY
-        _iio(tmp_path, "iio:device0", None, 0, y * g * 1000, z * g * 1000, scale=0.001)
-        angle, _ = sensor._LinuxAccelerometer.open(tmp_path).read()
+        _iio(tmp_path, "device0", None, 0, y * g * 1000, z * g * 1000, scale=0.001)
+        angle, _ = sensor._LinuxAccelerometer.open(tmp_path, prefix="device").read()
         assert angle == pytest.approx(110.0)
 
     def test_applies_the_mount_matrix(self, tmp_path):
         g = sensor.GRAVITY
         # Mounted rotated a quarter turn: the screen's up is the chip's x.
-        _iio(tmp_path, "iio:device0", None, g, 0, 0, matrix="0, 1, 0; 1, 0, 0; 0, 0, 1")
-        angle, _ = sensor._LinuxAccelerometer.open(tmp_path).read()
+        _iio(tmp_path, "device0", None, g, 0, 0, matrix="0, 1, 0; 1, 0, 0; 0, 0, 1")
+        angle, _ = sensor._LinuxAccelerometer.open(tmp_path, prefix="device").read()
         assert angle == pytest.approx(90.0)
 
     def test_nothing_there_is_none(self, tmp_path):
-        assert sensor._LinuxAccelerometer.open(tmp_path) is None
+        assert sensor._LinuxAccelerometer.open(tmp_path, prefix="device") is None
 
 
 class _ScriptedSensor:

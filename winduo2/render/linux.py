@@ -20,7 +20,7 @@ import os
 import shutil
 import subprocess
 
-from winduo.log import get_logger
+from winduo2.log import get_logger
 
 log = get_logger("linux")
 

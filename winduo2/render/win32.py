@@ -17,7 +17,7 @@ import ctypes
 import sys
 from ctypes import wintypes
 
-from winduo.log import get_logger
+from winduo2.log import get_logger
 
 log = get_logger("win32")
 

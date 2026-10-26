@@ -11,5 +11,5 @@ if str(TESTS) not in sys.path:
     sys.path.insert(0, str(TESTS))
 
 # Settings and calibration must never touch the real profile directory during a
-# test run. Set before anything imports winduo.log, which reads it at import.
-os.environ.setdefault("WINDUO_HOME", str(TESTS / ".scratch"))
+# test run. Set before anything imports winduo2.log, which reads it at import.
+os.environ.setdefault("WINDUO2_HOME", str(TESTS / ".scratch"))

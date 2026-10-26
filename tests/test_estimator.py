@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from helpers import Driver
 
-from winduo.angle.estimator import TravelEstimator
+from winduo2.angle.estimator import TravelEstimator
 
 
 class TestNeutral:

@@ -12,13 +12,13 @@ __all__ = ["APP_DIR", "get_logger", "setup_logging"]
 
 
 def _app_dir() -> Path:
-    base = os.environ.get("WINDUO_HOME") or os.environ.get("APPDATA")
+    base = os.environ.get("WINDUO2_HOME") or os.environ.get("APPDATA")
     if base:
-        return Path(base) / "WinDuo"
+        return Path(base) / "WinDuo2"
     if sys.platform.startswith("linux"):
         config = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        return Path(config) / "winduo"
-    return Path.home() / ".winduo"
+        return Path(config) / "winduo2"
+    return Path.home() / ".winduo2"
 
 
 APP_DIR = _app_dir()
@@ -33,7 +33,7 @@ def setup_logging(verbose: bool = False) -> None:
         return
     _configured = True
 
-    root = logging.getLogger("winduo")
+    root = logging.getLogger("winduo2")
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
     root.propagate = False
 
@@ -44,7 +44,7 @@ def setup_logging(verbose: bool = False) -> None:
     try:
         APP_DIR.mkdir(parents=True, exist_ok=True)
         rolling = logging.handlers.RotatingFileHandler(
-            APP_DIR / "winduo.log", maxBytes=512_000, backupCount=2, encoding="utf-8"
+            APP_DIR / "winduo2.log", maxBytes=512_000, backupCount=2, encoding="utf-8"
         )
         rolling.setFormatter(
             logging.Formatter("%(asctime)s %(levelname).1s %(name)s: %(message)s")
@@ -56,4 +56,4 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(f"winduo.{name}")
+    return logging.getLogger(f"winduo2.{name}")

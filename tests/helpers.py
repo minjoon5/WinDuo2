@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from winduo.angle.estimator import TravelEstimator
+from winduo2.angle.estimator import TravelEstimator
 
 #: One sensor reading, at the 60 Hz the sensor thread polls.
 READING = 1 / 60

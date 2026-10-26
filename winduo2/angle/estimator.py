@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from winduo.log import get_logger
+from winduo2.log import get_logger
 
 log = get_logger("estimator")
 

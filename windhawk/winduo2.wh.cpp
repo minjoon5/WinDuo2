@@ -1,11 +1,11 @@
 // ==WindhawkMod==
-// @id              winduo
-// @name            WinDuo
+// @id              winduo2
+// @name            WinDuo2
 // @description     Lean the screen back as the laptop lid closes, using the webcam instead of a hinge sensor
 // @version         0.1.0
 // @author          Basel Ashraf
 // @github          https://github.com/BaselAshraf81
-// @homepage        https://baselashraf.com/winduo
+// @homepage        https://github.com/minjoon5/duo
 // @include         windhawk.exe
 // @compilerOptions -ld3d11 -ldxgi -ldcomp -ld3dcompiler_47 -lmfplat -lmfreadwrite -lmf -lmfuuid -lole32 -luuid -lwtsapi32
 // @license         Apache-2.0
@@ -13,7 +13,7 @@
 
 // ==WindhawkModReadme==
 /*
-# WinDuo
+# WinDuo2
 
 As the laptop lid closes, the picture on screen leans back, blurs and dims, as
 though it were a sheet hinged at the bottom of the display that stays put in the
@@ -24,7 +24,8 @@ There is no hinge sensor on most laptops, so the lid angle comes from the
 webcam: closing the lid pitches the camera down, the scene slides up the frame,
 and the size of that slide is the angle.
 
-This is the Windhawk edition of [WinDuo](https://github.com/BaselAshraf81/winduo).
+This is the Windhawk edition of WinDuo2, a modified version of
+[WinDuo](https://github.com/BaselAshraf81/winduo) by Basel Ashraf.
 Its geometry, shader and state machine are ported from
 [Mac Duo](https://github.com/sumimakito/Mac-Duo) (Apache 2.0, Copyright 2026
 Makito).
@@ -254,7 +255,7 @@ static Settings CurrentSettings() {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry. A port of winduo/effect/geometry.py (DepthGeometry.profile).
+// Geometry. A port of winduo2/effect/geometry.py (DepthGeometry.profile).
 //
 // The picture is a sheet hinged to the bottom edge of the screen. Near the
 // hinge it stays fixed in the room while the glass turns under it; above
@@ -348,7 +349,7 @@ static double TiltKnee(double travel, double limit) {
     return limit * std::tanh(travel / limit);
 }
 
-// Curves from winduo/effect/gradient.py.
+// Curves from winduo2/effect/gradient.py.
 static double BlurCurve(double p) { return std::pow(Clamp01(p), 1.6); }
 static double DimCurve(double p) { return std::pow(Clamp01(p), 0.7); }
 static double TurnCurve(double p) { return std::pow(Clamp01(p), 1.8); }
@@ -374,7 +375,7 @@ struct AngleSample {
 };
 
 // ---------------------------------------------------------------------------
-// Controller. A port of winduo/effect/controller.py.
+// Controller. A port of winduo2/effect/controller.py.
 // ---------------------------------------------------------------------------
 
 constexpr double kTriggerSpeed = 4.0;
@@ -694,7 +695,7 @@ class ShiftTracker {
 };
 
 // ---------------------------------------------------------------------------
-// Estimator. A port of winduo/angle/estimator.py: shift to degrees, with
+// Estimator. A port of winduo2/angle/estimator.py: shift to degrees, with
 // neutral re-zeroed whenever the lid holds still, so drift never accumulates
 // for longer than one lid movement.
 // ---------------------------------------------------------------------------
@@ -1443,7 +1444,7 @@ class Overlay {
     float PaddedH() const { return float(height_ + 2 * kPadding); }
 
    private:
-    static constexpr const wchar_t* kClassName = L"WinDuoWindhawkOverlay";
+    static constexpr const wchar_t* kClassName = L"WinDuo2WindhawkOverlay";
 
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
@@ -1460,7 +1461,7 @@ class Overlay {
         hwnd_ = CreateWindowEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE |
                                    WS_EX_TRANSPARENT | WS_EX_LAYERED |
                                    WS_EX_NOREDIRECTIONBITMAP,
-                               kClassName, L"WinDuo", WS_POPUP, rect_.left, rect_.top,
+                               kClassName, L"WinDuo2", WS_POPUP, rect_.left, rect_.top,
                                width_, height_ + 1, nullptr, nullptr,
                                GetModuleHandle(nullptr), nullptr);
         if (!hwnd_) {
@@ -1550,10 +1551,10 @@ class Overlay {
         ID3DBlob* vsBlob = nullptr;
         ID3DBlob* psBlob = nullptr;
         ID3DBlob* errors = nullptr;
-        HRESULT hr = D3DCompile(kShader, sizeof(kShader) - 1, "winduo", nullptr,
+        HRESULT hr = D3DCompile(kShader, sizeof(kShader) - 1, "winduo2", nullptr,
                                 nullptr, "vs", "vs_4_0", 0, 0, &vsBlob, &errors);
         if (SUCCEEDED(hr)) {
-            hr = D3DCompile(kShader, sizeof(kShader) - 1, "winduo", nullptr, nullptr,
+            hr = D3DCompile(kShader, sizeof(kShader) - 1, "winduo2", nullptr, nullptr,
                             "ps", "ps_4_0", 0, 0, &psBlob, &errors);
         }
         if (FAILED(hr)) {

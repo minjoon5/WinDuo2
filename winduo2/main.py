@@ -1,6 +1,6 @@
 """Entry point.
 
-``python -m winduo`` starts the app. ``--preview`` plays the effect once and
+``python -m winduo2`` starts the app. ``--preview`` plays the effect once and
 exits, which is the quickest way to see whether the renderer works on a machine
 without involving the lid at all. ``--sensors`` does the opposite: it prints
 what the lid sensor reads, with no window, to check that this machine has one.
@@ -12,8 +12,8 @@ import argparse
 import signal
 import sys
 
-from winduo import __version__
-from winduo.log import get_logger, setup_logging
+from winduo2 import __version__
+from winduo2.log import get_logger, setup_logging
 
 log = get_logger("main")
 
@@ -22,10 +22,10 @@ __all__ = ["main"]
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="winduo",
+        prog="winduo2",
         description="Lean the screen away as the laptop lid closes.",
     )
-    parser.add_argument("--version", action="version", version=f"WinDuo {__version__}")
+    parser.add_argument("--version", action="version", version=f"WinDuo2 {__version__}")
     parser.add_argument(
         "--preview",
         action="store_true",
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if sys.platform != "win32" and not sys.platform.startswith("linux"):
         print(
-            "WinDuo runs on Windows, and on Linux under Hyprland.",
+            "WinDuo2 runs on Windows, and on Linux under Hyprland.",
             file=sys.stderr,
         )
         return 2
@@ -73,20 +73,20 @@ def main(argv: list[str] | None = None) -> int:
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
-    from winduo.app import Engine
-    from winduo.config import Store
-    from winduo.render.overlay import configure_surface
-    from winduo.ui.theme import STYLESHEET, app_icon, ui_font
-    from winduo.ui.tray import TrayController
+    from winduo2.app import Engine
+    from winduo2.config import Store
+    from winduo2.render.overlay import configure_surface
+    from winduo2.ui.theme import STYLESHEET, app_icon, ui_font
+    from winduo2.ui.tray import TrayController
 
     # Must happen before any window exists, or the context is already chosen.
     configure_surface()
 
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("WinDuo")
-    app.setApplicationDisplayName("WinDuo")
+    app.setApplicationName("WinDuo2")
+    app.setApplicationDisplayName("WinDuo2")
     app.setApplicationVersion(__version__)
-    app.setOrganizationName("WinDuo")
+    app.setOrganizationName("WinDuo2")
     app.setWindowIcon(app_icon())
     app.setStyleSheet(STYLESHEET)
     app.setFont(ui_font(9))
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setQuitOnLastWindowClosed(False)
 
     if options.overlay_check:
-        from winduo.render.overlay_check import run_overlay_check
+        from winduo2.render.overlay_check import run_overlay_check
 
         return run_overlay_check(app)
 
@@ -107,9 +107,9 @@ def main(argv: list[str] | None = None) -> int:
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.critical(
             None,
-            "WinDuo",
+            "WinDuo2",
             "Windows is not offering a notification area, so there would be no "
-            "way to reach WinDuo's controls.",
+            "way to reach WinDuo2's controls.",
         )
         return 3
 
@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat.start(250)
     heartbeat.timeout.connect(lambda: None)
 
-    log.info("WinDuo %s ready", __version__)
+    log.info("WinDuo2 %s ready", __version__)
     code = app.exec()
     engine.stop()
     return code
@@ -152,8 +152,8 @@ def _print_sensor(seconds: float = 20.0) -> int:
     """Show what the lid sensor reports. Close and open the lid to watch it move."""
     import time
 
-    from winduo.angle.sensor import SensorAngleSource
-    from winduo.config import Settings
+    from winduo2.angle.sensor import SensorAngleSource
+    from winduo2.config import Settings
 
     source = SensorAngleSource(Settings())
     source.start()

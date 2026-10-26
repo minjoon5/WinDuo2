@@ -13,17 +13,13 @@ WCAG 2.2 AA, and the accent is never the only carrier of meaning.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF, Qt
+from pathlib import Path
+
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
-    QBrush,
-    QColor,
     QFont,
     QFontDatabase,
     QIcon,
-    QLinearGradient,
-    QPainter,
-    QPainterPath,
-    QPen,
     QPixmap,
 )
 
@@ -358,70 +354,34 @@ QToolTip {{
 # --- Icons ---------------------------------------------------------------
 
 
-def _draw_flat(painter: QPainter, size: int, active: bool) -> None:
-    """A painted flat seen from the side, hinged at its foot and angled back.
+#: The app's icon, shipped beside this module. ``icon.ico`` next to it is the
+#: same picture at every Windows size, for the executable.
+ICON_PATH = Path(__file__).with_name("icon.png")
 
-    The icon is the product's own geometry: a rectangle pivoted about its bottom
-    edge, with the sightline it is built for struck across it. Drawn rather than
-    borrowed, in one stroke weight, so there is no glyph standing in for an icon.
-    """
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    unit = size / 32.0
 
-    # The hinge line, along the foot.
-    foot_y = 25 * unit
-    painter.setPen(
-        QPen(QColor(Palette.CHALK_SOFT), max(1.0, 1.6 * unit), Qt.PenStyle.SolidLine,
-             Qt.PenCapStyle.RoundCap)
+def _pixmap(size: int) -> QPixmap:
+    source = QPixmap(str(ICON_PATH))
+    if source.isNull():
+        return QPixmap()
+    return source.scaled(
+        size,
+        size,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
     )
-    painter.drawLine(QPointF(4 * unit, foot_y), QPointF(28 * unit, foot_y))
-
-    # The flat itself, leaning back. Narrower at the top, which is the whole
-    # effect in one shape.
-    flat = QPainterPath()
-    flat.moveTo(6.5 * unit, foot_y)
-    flat.lineTo(25.5 * unit, foot_y)
-    flat.lineTo(21.5 * unit, 7 * unit)
-    flat.lineTo(10.5 * unit, 7 * unit)
-    flat.closeSubpath()
-
-    fill = QLinearGradient(0, 7 * unit, 0, foot_y)
-    if active:
-        fill.setColorAt(0.0, QColor(Palette.OXIDE_SUNK))
-        fill.setColorAt(1.0, QColor(Palette.OXIDE_BRIGHT))
-    else:
-        fill.setColorAt(0.0, QColor(Palette.FRAME))
-        fill.setColorAt(1.0, QColor(Palette.CHALK_SOFT))
-    painter.setBrush(QBrush(fill))
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawPath(flat)
-
-    # One chalk snap-line across the flat, the line the picture is squared to.
-    painter.setPen(
-        QPen(QColor(28, 26, 23, 190), max(1.0, 1.2 * unit), Qt.PenStyle.SolidLine)
-    )
-    painter.drawLine(QPointF(9 * unit, 16 * unit), QPointF(23 * unit, 16 * unit))
-
-
-def _pixmap(size: int, active: bool) -> QPixmap:
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    _draw_flat(painter, size, active)
-    painter.end()
-    return pixmap
 
 
 def app_icon(active: bool = False) -> QIcon:
     icon = QIcon()
     for size in (16, 20, 24, 32, 48, 64, 128, 256):
-        icon.addPixmap(_pixmap(size, active))
+        icon.addPixmap(_pixmap(size))
     return icon
 
 
 def tray_icon(active: bool = False) -> QIcon:
-    """Separate from the app icon so the tray can show that the effect is live."""
+    """The same picture at tray sizes. ``active`` is kept for the tray's calls;
+    the icon no longer changes while the effect runs."""
     icon = QIcon()
     for size in (16, 20, 24, 32, 40, 48):
-        icon.addPixmap(_pixmap(size, active))
+        icon.addPixmap(_pixmap(size))
     return icon

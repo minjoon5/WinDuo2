@@ -21,9 +21,9 @@ from PyQt6.QtGui import QSurfaceFormat
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import QWidget
 
-from winduo.log import get_logger
-from winduo.render import win32
-from winduo.render.shaders import DOWNSAMPLE, FRAGMENT, VERTEX
+from winduo2.log import get_logger
+from winduo2.render import win32
+from winduo2.render.shaders import DOWNSAMPLE, FRAGMENT, VERTEX
 
 log = get_logger("overlay")
 
@@ -41,7 +41,7 @@ __all__ = [
 PADDING_POINTS = 400.0
 
 #: The overlay's window title, which is how the Hyprland helper finds it.
-OVERLAY_TITLE = "WinDuo overlay"
+OVERLAY_TITLE = "WinDuo2 overlay"
 
 
 def flip_safe_geometry(screen_rect):
@@ -115,7 +115,7 @@ class FrameParams:
         reflection_intensity: float = 0.0,
         turn_strength: float = 0.0,
     ) -> None:
-        #: A ``winduo.effect.geometry.Profile``: where each screen row samples.
+        #: A ``winduo2.effect.geometry.Profile``: where each screen row samples.
         self.profile = profile
         self.blur_strength = blur_strength
         self.dim_strength = dim_strength
@@ -477,7 +477,7 @@ class DepthOverlay:
         Mapping is asynchronous, so the window may not be listed yet on the
         first try; a few retries a fifth of a second apart cover that.
         """
-        from winduo.render import linux
+        from winduo2.render import linux
 
         if not linux.is_hyprland():
             return

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from winduo.angle.lidswitch import read_acpi_lid_state
-from winduo.render import capture, linux
+from winduo2.angle.lidswitch import read_acpi_lid_state
+from winduo2.render import capture, linux
 
 
 class TestAcpiLidState:

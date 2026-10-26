@@ -1,4 +1,4 @@
-"""User settings, persisted as JSON in ``config.json`` under ``%APPDATA%\\WinDuo``."""
+"""User settings, persisted as JSON in ``config.json`` under ``%APPDATA%\\WinDuo2``."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from winduo.log import APP_DIR, get_logger
+from winduo2.log import APP_DIR, get_logger
 
 log = get_logger("config")
 

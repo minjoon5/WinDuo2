@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from winduo.effect.gradient import BlurGradient
+from winduo2.effect.gradient import BlurGradient
 
 
 class TestBlurStrength:

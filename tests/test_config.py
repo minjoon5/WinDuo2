@@ -9,7 +9,7 @@ wondering why 8 degrees still triggers it.
 
 from __future__ import annotations
 
-from winduo.config import Settings
+from winduo2.config import Settings
 
 
 class TestDefaults:
@@ -62,7 +62,7 @@ class TestSaving:
         # it, which a file holding every value would block.
         import json
 
-        from winduo.config import Store
+        from winduo2.config import Store
 
         path = tmp_path / "config.json"
         store = Store(config_path=path)
@@ -73,7 +73,7 @@ class TestSaving:
     def test_reset_leaves_nothing_behind(self, tmp_path):
         import json
 
-        from winduo.config import Store
+        from winduo2.config import Store
 
         path = tmp_path / "config.json"
         store = Store(config_path=path)

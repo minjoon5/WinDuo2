@@ -20,7 +20,7 @@ from collections.abc import Callable
 from ctypes import wintypes
 from pathlib import Path
 
-from winduo.log import get_logger
+from winduo2.log import get_logger
 
 log = get_logger("lidswitch")
 
@@ -129,7 +129,7 @@ class LidSwitch:
             return self._available
         self._ready.clear()
         self._thread = threading.Thread(
-            target=self._run, name="winduo-lidswitch", daemon=True
+            target=self._run, name="winduo2-lidswitch", daemon=True
         )
         self._thread.start()
         self._ready.wait(timeout)
@@ -163,7 +163,7 @@ class LidSwitch:
                 if changed:
                     self._on_change(is_open)
 
-        self._thread = threading.Thread(target=poll, name="winduo-lidswitch", daemon=True)
+        self._thread = threading.Thread(target=poll, name="winduo2-lidswitch", daemon=True)
         self._thread.start()
         return True
 
@@ -196,7 +196,7 @@ class LidSwitch:
         cls = _WNDCLASS()
         cls.lpfnWndProc = self._proc
         cls.hInstance = kernel32.GetModuleHandleW(None)
-        cls.lpszClassName = "WinDuoLidSwitch"
+        cls.lpszClassName = "WinDuo2LidSwitch"
 
         # Spelled out because the defaults guess wrong on 64-bit: handles are
         # pointer-sized, and ctypes narrows them to C int without this, which
@@ -255,8 +255,8 @@ class LidSwitch:
 
         hwnd = user32.CreateWindowExW(
             0,
-            "WinDuoLidSwitch",
-            "WinDuo",
+            "WinDuo2LidSwitch",
+            "WinDuo2",
             0,
             0,
             0,

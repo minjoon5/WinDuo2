@@ -19,12 +19,12 @@ import time
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from winduo.angle.estimator import AngleSample
-from winduo.config import Settings
-from winduo.effect.geometry import DEFAULT_NEUTRAL_ANGLE, DepthGeometry
-from winduo.effect.gradient import BlurGradient
-from winduo.effect.spring import CriticallyDampedSpring
-from winduo.log import get_logger
+from winduo2.angle.estimator import AngleSample
+from winduo2.config import Settings
+from winduo2.effect.geometry import DEFAULT_NEUTRAL_ANGLE, DepthGeometry
+from winduo2.effect.gradient import BlurGradient
+from winduo2.effect.spring import CriticallyDampedSpring
+from winduo2.log import get_logger
 
 log = get_logger("controller")
 

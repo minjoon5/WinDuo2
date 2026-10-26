@@ -10,10 +10,10 @@ from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from winduo.config import Store
-from winduo.log import get_logger
-from winduo.ui.settings import SettingsWindow
-from winduo.ui.theme import tray_icon
+from winduo2.config import Store
+from winduo2.log import get_logger
+from winduo2.ui.settings import SettingsWindow
+from winduo2.ui.theme import tray_icon
 
 log = get_logger("tray")
 
@@ -30,7 +30,7 @@ class TrayController(QObject):
         self._was_active = False
 
         self.icon = QSystemTrayIcon(tray_icon(False))
-        self.icon.setToolTip("WinDuo")
+        self.icon.setToolTip("WinDuo2")
         self.icon.activated.connect(self._on_activated)
         self.icon.setContextMenu(self._build_menu())
 
@@ -78,7 +78,7 @@ class TrayController(QObject):
 
         menu.addSeparator()
 
-        quit_action = QAction("Quit WinDuo", menu)
+        quit_action = QAction("Quit WinDuo2", menu)
         quit_action.triggered.connect(self._quit)
         menu.addAction(quit_action)
 
@@ -103,8 +103,8 @@ class TrayController(QObject):
         """
         self.store.update(has_seen_intro=True)
         self.icon.showMessage(
-            "WinDuo is ready",
-            "Close the lid and the screen will lean away. WinDuo lives in the "
+            "WinDuo2 is ready",
+            "Close the lid and the screen will lean away. WinDuo2 lives in the "
             "notification area; right-click it for settings.",
             tray_icon(True),
             6000,
@@ -140,9 +140,9 @@ class TrayController(QObject):
 
         self._status_action.setText(summary)
         if settings.show_reading:
-            self.icon.setToolTip(f"WinDuo \u2014 {summary}")
+            self.icon.setToolTip(f"WinDuo2 \u2014 {summary}")
         else:
-            self.icon.setToolTip("WinDuo")
+            self.icon.setToolTip("WinDuo2")
 
     def _on_activated(self, reason) -> None:
         if reason in (

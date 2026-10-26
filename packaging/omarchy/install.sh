@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Install WinDuo on Omarchy (Arch + Hyprland).
+# Install WinDuo2 on Omarchy (Arch + Hyprland).
 #
-#   curl -fsSL https://raw.githubusercontent.com/BaselAshraf81/winduo/main/packaging/omarchy/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/minjoon5/duo/main/packaging/omarchy/install.sh | bash
 #   # or, from a checkout:
 #   ./packaging/omarchy/install.sh
 #
 # What it does, all inside your home directory apart from the system packages:
-#   1. installs the system packages WinDuo needs (Qt, OpenCV, grim) with pacman
-#   2. creates a virtualenv in ~/.local/share/winduo/venv that reuses them
-#   3. puts a `winduo` launcher in ~/.local/bin and a menu entry beside it
-#   4. starts WinDuo with Hyprland, via Omarchy's autostart.lua when it exists
+#   1. installs the system packages WinDuo2 needs (Qt, OpenCV, grim) with pacman
+#   2. creates a virtualenv in ~/.local/share/winduo2/venv that reuses them
+#   3. puts a `winduo2` launcher in ~/.local/bin and a menu entry beside it
+#   4. starts WinDuo2 with Hyprland, via Omarchy's autostart.lua when it exists
 #      and an exec-once line in hyprland.conf otherwise
 #
 # Undo it all with packaging/omarchy/uninstall.sh.
 set -euo pipefail
 
-REPO="${WINDUO_REPO:-https://github.com/BaselAshraf81/winduo}"
-DATA="${XDG_DATA_HOME:-$HOME/.local/share}/winduo"
+REPO="${WINDUO2_REPO:-https://github.com/minjoon5/duo}"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/winduo2"
 BIN="$HOME/.local/bin"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 HYPR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
-MARKER="# added by the WinDuo installer"
+MARKER="# added by the WinDuo2 installer"
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
-die() { printf 'winduo: %s\n' "$*" >&2; exit 1; }
+die() { printf 'winduo2: %s\n' "$*" >&2; exit 1; }
 
 command -v pacman >/dev/null || die "this installer is for Arch-based systems such as Omarchy"
 [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || say "Hyprland is not running; installing anyway"
@@ -60,31 +60,31 @@ python -m venv --system-site-packages "$DATA/venv"
 
 say "adding the launcher and menu entry"
 mkdir -p "$BIN" "$APPS"
-cat >"$BIN/winduo" <<EOF
+cat >"$BIN/winduo2" <<EOF
 #!/usr/bin/env bash
-exec "$DATA/venv/bin/python" -m winduo "\$@"
+exec "$DATA/venv/bin/python" -m winduo2 "\$@"
 EOF
-chmod +x "$BIN/winduo"
-cat >"$APPS/winduo.desktop" <<EOF
+chmod +x "$BIN/winduo2"
+cat >"$APPS/winduo2.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=WinDuo
+Name=WinDuo2
 Comment=Lean the screen back as the lid closes
-Exec=$BIN/winduo --settings
+Exec=$BIN/winduo2 --settings
 Icon=video-display
 Categories=Utility;
 EOF
 
-say "starting WinDuo with Hyprland"
+say "starting WinDuo2 with Hyprland"
 if [ -f "$HYPR/autostart.lua" ]; then
-    grep -q "winduo" "$HYPR/autostart.lua" \
-        || printf '\n%s\no.launch_on_start("%s")\n' "-- ${MARKER#\# }" "$BIN/winduo" >>"$HYPR/autostart.lua"
+    grep -q "winduo2" "$HYPR/autostart.lua" \
+        || printf '\n%s\no.launch_on_start("%s")\n' "-- ${MARKER#\# }" "$BIN/winduo2" >>"$HYPR/autostart.lua"
 elif [ -f "$HYPR/hyprland.conf" ]; then
-    grep -q "winduo" "$HYPR/hyprland.conf" \
-        || printf '\n%s\nexec-once = %s\n' "$MARKER" "$BIN/winduo" >>"$HYPR/hyprland.conf"
+    grep -q "winduo2" "$HYPR/hyprland.conf" \
+        || printf '\n%s\nexec-once = %s\n' "$MARKER" "$BIN/winduo2" >>"$HYPR/hyprland.conf"
 else
-    say "no Hyprland config found; start $BIN/winduo yourself"
+    say "no Hyprland config found; start $BIN/winduo2 yourself"
 fi
 
-say "done. Run 'winduo --preview' to see the effect, or 'winduo --calibrate' first."
+say "done. Run 'winduo2 --preview' to see the effect, or 'winduo2 --calibrate' first."
 case ":$PATH:" in *":$BIN:"*) ;; *) say "note: $BIN is not on your PATH" ;; esac

@@ -16,7 +16,7 @@ pytest.importorskip("PyQt6.QtWidgets")
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from winduo.config import Store  # noqa: E402
+from winduo2.config import Store  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -49,7 +49,7 @@ class _FakeEngine:
 
 
 def _tray(store):
-    from winduo.ui.tray import TrayController
+    from winduo2.ui.tray import TrayController
 
     tray = TrayController(store, _FakeEngine())
     opened = []

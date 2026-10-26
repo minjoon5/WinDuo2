@@ -6,8 +6,8 @@ import pytest
 
 pytest.importorskip("OpenGL")
 
-from winduo.render.capture import _capped  # noqa: E402
-from winduo.render.overlay import texture_layout  # noqa: E402
+from winduo2.render.capture import _capped  # noqa: E402
+from winduo2.render.overlay import texture_layout  # noqa: E402
 
 SCREENS = [
     (1920, 1080),

@@ -1,3 +1,10 @@
+WinDuo2
+A modified version of WinDuo by Basel Ashraf, renamed WinDuo2. It reads the
+lid from the laptop's own sensors instead of the webcam. Everything below
+applies to it unchanged.
+
+--------------------------------------------------------------------------------
+
 WinDuo
 Copyright 2026 Basel Ashraf <https://baselashraf.com>
 
@@ -19,19 +26,19 @@ WinDuo is a Windows port of Mac Duo's lid-close depth effect. The following
 parts are ports of Mac Duo's implementation rather than independent work, and
 each carries a note saying so in its source file:
 
-    winduo/effect/homography.py   from Homography.swift
-    winduo/effect/geometry.py     from DepthGeometry in DepthOverlay.swift
-    winduo/effect/spring.py       from CriticallyDampedSpring.swift
-    winduo/effect/gradient.py     from BlurGradient.swift
-    winduo/effect/controller.py   from LidController.swift
-    winduo/render/shaders.py      from DepthShaders.swift
-    winduo/render/overlay.py      structure from DepthOverlay.swift and
+    winduo2/effect/homography.py   from Homography.swift
+    winduo2/effect/geometry.py     from DepthGeometry in DepthOverlay.swift
+    winduo2/effect/spring.py       from CriticallyDampedSpring.swift
+    winduo2/effect/gradient.py     from BlurGradient.swift
+    winduo2/effect/controller.py   from LidController.swift
+    winduo2/render/shaders.py      from DepthShaders.swift
+    winduo2/render/overlay.py      structure from DepthOverlay.swift and
                                   DepthRenderer.swift
 
-The angle estimation in winduo/angle/ is not derived from Mac Duo. Mac Duo reads
+The angle estimation in winduo2/angle/ is not derived from Mac Duo. Mac Duo reads
 a hardware lid angle sensor over HID; that code has no counterpart here.
 
-Three details in winduo/effect/gradient.py and winduo/render/shaders.py are
+Three details in winduo2/effect/gradient.py and winduo2/render/shaders.py are
 adapted from ideas in macTilt:
 
     macTilt

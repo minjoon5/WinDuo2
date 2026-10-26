@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from winduo.effect import (
+from winduo2.effect import (
     BlurGradient,
     CriticallyDampedSpring,
     DepthGeometry,
@@ -178,15 +178,15 @@ class TestProfile:
     SIZE = (1600.0, 1000.0)
 
     def _profile(self, current, start=100.0, distance=3.0):
-        from winduo.effect.geometry import DepthGeometry
+        from winduo2.effect.geometry import DepthGeometry
 
         return DepthGeometry().profile(start, current, distance, 1.0, self.SIZE)
 
     def test_it_is_the_flat_sheet_exactly(self):
         import numpy as np
 
-        from winduo.effect.geometry import DepthGeometry
-        from winduo.effect.homography import screen_to_picture
+        from winduo2.effect.geometry import DepthGeometry
+        from winduo2.effect.homography import screen_to_picture
 
         corners = DepthGeometry().corners(100.0, 60.0, 3.0, 1.0, self.SIZE)
         matrix = screen_to_picture(*self.SIZE, corners)
@@ -227,22 +227,22 @@ class TestProfile:
 
 class TestTiltKnee:
     def test_tracks_the_lid_at_first(self):
-        from winduo.effect.controller import tilt_knee
+        from winduo2.effect.controller import tilt_knee
 
         assert tilt_knee(5.0, 55.0) == pytest.approx(5.0, rel=0.01)
 
     def test_never_passes_the_limit(self):
-        from winduo.effect.controller import tilt_knee
+        from winduo2.effect.controller import tilt_knee
 
         assert tilt_knee(500.0, 55.0) < 55.0
 
     def test_is_monotonic(self):
-        from winduo.effect.controller import tilt_knee
+        from winduo2.effect.controller import tilt_knee
 
         values = [tilt_knee(float(t), 55.0) for t in range(0, 120, 5)]
         assert all(b > a for a, b in zip(values, values[1:], strict=False))
 
     def test_zero_limit_turns_the_easing_off(self):
-        from winduo.effect.controller import tilt_knee
+        from winduo2.effect.controller import tilt_knee
 
         assert tilt_knee(40.0, 0.0) == 40.0

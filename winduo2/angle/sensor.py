@@ -27,9 +27,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from winduo.angle.estimator import AngleSample, TravelEstimator
-from winduo.config import Settings
-from winduo.log import get_logger
+from winduo2.angle.estimator import AngleSample, TravelEstimator
+from winduo2.config import Settings
+from winduo2.log import get_logger
 
 log = get_logger("sensor")
 
@@ -217,8 +217,12 @@ class _LinuxAccelerometer:
         self._sign: float | None = None
 
     @classmethod
-    def open(cls, root: Path = IIO_ROOT) -> _LinuxAccelerometer | None:
-        devices = [d for d in sorted(root.glob("iio:device*")) if (d / "in_accel_x_raw").exists()]
+    def open(cls, root: Path = IIO_ROOT, prefix: str = "iio:device") -> _LinuxAccelerometer | None:
+        # ``prefix`` is only ever changed by the tests: Windows, where CI runs
+        # them, does not allow a colon in a directory name.
+        devices = [
+            d for d in sorted(root.glob(prefix + "*")) if (d / "in_accel_x_raw").exists()
+        ]
         if not devices:
             return None
 
@@ -337,7 +341,7 @@ class SensorAngleSource:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="winduo-sensor", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="winduo2-sensor", daemon=True)
         self._thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:

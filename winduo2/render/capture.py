@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 import cv2
 import numpy as np
 
-from winduo.log import get_logger
+from winduo2.log import get_logger
 
 log = get_logger("capture")
 
@@ -258,7 +258,7 @@ class ScreenCapture:
         )
         self._stop.clear()
         self._thread = threading.Thread(
-            target=self._run, name="winduo-capture", daemon=True
+            target=self._run, name="winduo2-capture", daemon=True
         )
         self._thread.start()
 

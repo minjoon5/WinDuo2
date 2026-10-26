@@ -1,6 +1,6 @@
 """Finds which overlay window setting stops the effect from showing on a machine.
 
-``python -m winduo --overlay-check`` shows a half-transparent red tint over the
+``python -m winduo2 --overlay-check`` shows a half-transparent red tint over the
 whole screen several times, each with one more of the settings the real overlay
 uses. The first step that no longer shows red names the setting at fault. The
 last two steps run the real overlay and shader, first on a test pattern and then
@@ -15,8 +15,8 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtWidgets import QWidget
 
-from winduo.render import win32
-from winduo.render.overlay import flip_safe_geometry
+from winduo2.render import win32
+from winduo2.render.overlay import flip_safe_geometry
 
 __all__ = ["run_overlay_check"]
 
@@ -80,10 +80,10 @@ def _real_overlay(use_capture: bool):
     """
     import numpy as np
 
-    from winduo.config import Settings
-    from winduo.effect.controller import EffectController, Frame
-    from winduo.render.capture import CaptureError, ScreenCapture
-    from winduo.render.overlay import DepthOverlay, FrameParams
+    from winduo2.config import Settings
+    from winduo2.effect.controller import EffectController, Frame
+    from winduo2.render.capture import CaptureError, ScreenCapture
+    from winduo2.render.overlay import DepthOverlay, FrameParams
 
     screen = QGuiApplication.primaryScreen()
     rect = screen.geometry()

@@ -18,14 +18,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from winduo.config import (
+from winduo2.config import (
     Store,
     distance_from_perspective,
     perspective_from_distance,
 )
-from winduo.log import get_logger
-from winduo.ui.theme import app_icon, ui_font
-from winduo.ui.widgets import HoldMeter, Rule, SectionLabel, SliderRow, help_label
+from winduo2.log import get_logger
+from winduo2.ui.theme import app_icon, ui_font
+from winduo2.ui.widgets import HoldMeter, Rule, SectionLabel, SliderRow, help_label
 
 log = get_logger("settings")
 
@@ -41,7 +41,7 @@ class SettingsWindow(QWidget):
         self.engine = engine
         self._applying = False
 
-        self.setWindowTitle("WinDuo")
+        self.setWindowTitle("WinDuo2")
         self.setWindowIcon(app_icon())
         self.setFixedWidth(384)
         self.setFont(ui_font(9))
@@ -74,7 +74,7 @@ class SettingsWindow(QWidget):
 
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("WinDuo")
+        title = QLabel("WinDuo2")
         title.setProperty("role", "title")
         top.addWidget(title)
         top.addStretch(1)
@@ -330,8 +330,8 @@ class SettingsWindow(QWidget):
         layout.addLayout(row)
 
         credit = QLabel(
-            'Built by <a href="https://baselashraf.com" style="color:#6fa3c7;">'
-            "Basel Ashraf</a>. Ported from "
+            'Based on <a href="https://github.com/BaselAshraf81/winduo" '
+            'style="color:#6fa3c7;">WinDuo</a> by Basel Ashraf. Ported from '
             '<a href="https://github.com/sumimakito/Mac-Duo" '
             'style="color:#6fa3c7;">Mac Duo</a> by Makito. Free for noncommercial use.'
         )

@@ -19,7 +19,7 @@ from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QWheelEvent
 from PyQt6.QtWidgets import QApplication, QScrollArea, QWidget
 
-from winduo.ui.widgets import SliderRow
+from winduo2.ui.widgets import SliderRow
 
 
 @pytest.fixture(scope="module")

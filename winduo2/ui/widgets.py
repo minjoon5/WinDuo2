@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from winduo.ui.theme import Palette, label_font, ui_font
+from winduo2.ui.theme import Palette, label_font, ui_font
 
 __all__ = ["HoldMeter", "Rule", "SectionLabel", "SliderRow", "help_label"]
 

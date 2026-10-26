@@ -5,6 +5,6 @@
 ``lidswitch``   the operating system's own open/shut signal.
 """
 
-from winduo.angle.estimator import AngleSample, TravelEstimator
+from winduo2.angle.estimator import AngleSample, TravelEstimator
 
 __all__ = ["AngleSample", "TravelEstimator"]

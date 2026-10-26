@@ -1,25 +1,25 @@
-# WinDuo
+# WinDuo2
 
 Close your laptop lid and the screen leans away, blurring and dimming as it goes, the way an iPhone Duo does as it folds shut.
 
-[Mac Duo](https://github.com/sumimakito/Mac-Duo) reads the MacBook's lid angle sensor. WinDuo reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
+WinDuo2 is a modified version of [WinDuo](https://github.com/BaselAshraf81/winduo) by Basel Ashraf. [Mac Duo](https://github.com/sumimakito/Mac-Duo) reads the MacBook's lid angle sensor. WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
 
 Windows 10 (2004+) and 11, Windhawk, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
 
 ## Install
 
-**Just want to use it:** download `WinDuo.exe` from the [latest release](https://github.com/BaselAshraf81/winduo/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
+**Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/duo/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
 
 **From source:**
 
 ```sh
-pip install git+https://github.com/BaselAshraf81/winduo
-python -m winduo
+pip install git+https://github.com/minjoon5/duo
+python -m winduo2
 ```
 
-WinDuo sits in the notification area. Right-click it for settings.
+WinDuo2 sits in the notification area. Right-click it for settings.
 
-To check that your laptop has a sensor WinDuo can read, run `python -m winduo --sensors` and move the lid: it prints the angle it sees for twenty seconds. `python -m winduo --preview` plays the effect once on whatever is on screen.
+To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 --sensors` and move the lid: it prints the angle it sees for twenty seconds. `python -m winduo2 --preview` plays the effect once on whatever is on screen.
 
 ## How it follows the lid
 
@@ -36,7 +36,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 ## Known limits
 
-- **It needs a sensor in the lid.** Convertibles have one for screen rotation; most ordinary clamshell laptops have none, and then WinDuo says so in the tray. If `--sensors` shows an angle that does not change as the lid moves, the accelerometer Windows exposes is in the base, which cannot see the lid.
+- **It needs a sensor in the lid.** Convertibles have one for screen rotation; most ordinary clamshell laptops have none, and then WinDuo2 says so in the tray. If `--sensors` shows an angle that does not change as the lid moves, the accelerometer Windows exposes is in the base, which cannot see the lid.
 - **With only the accelerometer, tipping the whole laptop back can trigger it.** It cannot tell the lid turning from the machine turning. A laptop being carried reads as far from 1 g and is ignored, but a slow tilt is not. A hinge angle sensor has neither problem.
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
@@ -44,17 +44,17 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 ## Windhawk
 
-[windhawk/winduo.wh.cpp](windhawk/winduo.wh.cpp) is a native C++ build of the same effect packaged as a [Windhawk](https://windhawk.net) mod. It runs in its own process, injects into nothing, and needs no Python. It still reads the lid from the webcam rather than the sensors.
+[windhawk/winduo2.wh.cpp](windhawk/winduo2.wh.cpp) is a native C++ build of the same effect packaged as a [Windhawk](https://windhawk.net) mod. It runs in its own process, injects into nothing, and needs no Python. It still reads the lid from the webcam rather than the sensors.
 
 ## Linux (Omarchy / Hyprland)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/BaselAshraf81/winduo/main/packaging/omarchy/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minjoon5/duo/main/packaging/omarchy/install.sh | bash
 ```
 
-This installs the Arch packages it needs, creates a virtualenv under `~/.local/share/winduo`, and starts WinDuo with Hyprland. `packaging/omarchy/uninstall.sh` undoes it. Differences from Windows:
+This installs the Arch packages it needs, creates a virtualenv under `~/.local/share/winduo2`, and starts WinDuo2 with Hyprland. `packaging/omarchy/uninstall.sh` undoes it. Differences from Windows:
 
-- **The picture is held, not live.** Wayland has no way for the overlay to keep itself out of a screen capture, so WinDuo captures one frame as the lid starts to move (with `grim`) and animates that.
+- **The picture is held, not live.** Wayland has no way for the overlay to keep itself out of a screen capture, so WinDuo2 captures one frame as the lid starts to move (with `grim`) and animates that.
 - **Hyprland only.** The overlay is floated, pinned and sized with `hyprctl dispatch`, which works under both Hyprland config formats. Other compositors are not supported.
 - The lid is read from the IIO accelerometer under `/sys/bus/iio/devices`, preferring the one the kernel labels `accel-display`, and the lid switch from `/proc/acpi/button/lid`.
 

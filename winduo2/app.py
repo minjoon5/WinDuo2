@@ -13,15 +13,15 @@ import time
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
 
-from winduo.angle.estimator import AngleSample
-from winduo.angle.lidswitch import LidSwitch
-from winduo.angle.sensor import SensorAngleSource
-from winduo.config import Store
-from winduo.effect.controller import EffectController
-from winduo.log import get_logger
-from winduo.render import win32
-from winduo.render.capture import CaptureError, ScreenCapture
-from winduo.render.overlay import DepthOverlay, FrameParams
+from winduo2.angle.estimator import AngleSample
+from winduo2.angle.lidswitch import LidSwitch
+from winduo2.angle.sensor import SensorAngleSource
+from winduo2.config import Store
+from winduo2.effect.controller import EffectController
+from winduo2.log import get_logger
+from winduo2.render import win32
+from winduo2.render.capture import CaptureError, ScreenCapture
+from winduo2.render.overlay import DepthOverlay, FrameParams
 
 log = get_logger("app")
 
