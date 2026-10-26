@@ -107,6 +107,9 @@ class Settings:
     neutral_settle_seconds: float = 0.4
     #: How far the lid may drift and still count as holding still, in degrees.
     neutral_settle_tolerance: float = 1.5
+    #: How long a lid stopped partway closed keeps the effect before its
+    #: position becomes neutral and the effect eases out.
+    partial_hold_seconds: float = 4.0
 
     # --- Estimator -------------------------------------------------------
     #: Estimator confidence below which the effect will not trigger.
@@ -141,6 +144,7 @@ class Settings:
         out.tilt_limit = _clamp(out.tilt_limit, 0.0, 90.0)
         out.neutral_settle_seconds = _clamp(out.neutral_settle_seconds, 0.15, 3.0)
         out.neutral_settle_tolerance = _clamp(out.neutral_settle_tolerance, 0.3, 6.0)
+        out.partial_hold_seconds = _clamp(out.partial_hold_seconds, 0.4, 30.0)
         out.confidence_floor = _clamp(out.confidence_floor, 0.0, 0.95)
         out.render_width_cap = int(_clamp(out.render_width_cap, 0, 7680))
         return out

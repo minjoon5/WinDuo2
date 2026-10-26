@@ -29,9 +29,30 @@ class TestNeutral:
         moved = driver.feed([1.0] * 20)
         assert moved.travel == pytest.approx(20.0, rel=0.02)
 
-        rested = driver.feed([0.0] * 60)
+        rested = driver.feed([0.0] * 300)
         assert rested.at_rest
         assert rested.travel == pytest.approx(0.0, abs=1e-6)
+
+    def test_pausing_partway_through_a_close_keeps_the_travel(self):
+        # Measured on a Galaxy Book: closing at 15 degrees per second, a pause
+        # to look re-zeroed within 0.4 s and switched the effect off.
+        driver = Driver(settle_seconds=0.4, hold_seconds=4.0, hold_travel=6.0)
+        driver.settle()
+        driver.feed([0.25] * 60)
+        paused = driver.feed([0.0] * 180)
+        assert not paused.at_rest
+        assert paused.travel == pytest.approx(15.0, rel=0.02)
+        given_up = driver.feed([0.0] * 120)
+        assert given_up.at_rest
+        assert given_up.travel == pytest.approx(0.0, abs=1e-6)
+
+    def test_a_small_nudge_still_settles_quickly(self):
+        # Below hold_travel the effect cannot be running, so there is nothing
+        # to keep and the usual settle time applies.
+        driver = Driver(settle_seconds=0.4, hold_seconds=4.0, hold_travel=6.0)
+        driver.settle()
+        driver.feed([0.25] * 12)
+        assert driver.feed([0.0] * 36).at_rest
 
     def test_a_slow_close_is_not_swallowed_by_the_neutral_tracker(self):
         # 0.25 degrees per reading at 60 Hz is 15 degrees per second: about as

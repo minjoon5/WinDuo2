@@ -287,6 +287,16 @@ class SettingsWindow(QWidget):
         self._settle.changed.connect(lambda v: self._apply(neutral_settle_seconds=v))
         layout.addWidget(self._settle)
 
+        self._hold = SliderRow(
+            "Hold a partly closed lid for", 0.4, 30.0, 4.0, suffix=" s", decimals=1,
+            help_text=(
+                "How long the effect stays when you stop partway through closing, "
+                "before that position becomes the new neutral."
+            ),
+        )
+        self._hold.changed.connect(lambda v: self._apply(partial_hold_seconds=v))
+        layout.addWidget(self._hold)
+
         self._render_width = SliderRow(
             "Capture width", 640, 3840, 1600, suffix=" px",
             help_text=(
@@ -383,6 +393,7 @@ class SettingsWindow(QWidget):
             )
             self._confidence_floor.set_value(settings.confidence_floor)
             self._settle.set_value(settings.neutral_settle_seconds)
+            self._hold.set_value(settings.partial_hold_seconds)
             self._render_width.set_value(settings.render_width_cap or 1600)
         finally:
             self._applying = False

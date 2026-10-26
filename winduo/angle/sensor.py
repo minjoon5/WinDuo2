@@ -304,6 +304,17 @@ def open_lid_sensor() -> LidSensor | None:
     return None
 
 
+def _estimator_settings(settings: Settings) -> dict[str, float]:
+    return {
+        "settle_seconds": settings.neutral_settle_seconds,
+        "settle_tolerance": settings.neutral_settle_tolerance,
+        "hold_seconds": settings.partial_hold_seconds,
+        # Anywhere the effect can still be running, which is the trigger less
+        # the hysteresis that releases it.
+        "hold_travel": max(settings.trigger_travel - settings.release_hysteresis, 1.0),
+    }
+
+
 class SensorAngleSource:
     """Owns the sensor thread and publishes the newest :class:`AngleSample`.
 
@@ -312,10 +323,7 @@ class SensorAngleSource:
     """
 
     def __init__(self, settings: Settings, opener=open_lid_sensor) -> None:
-        self._estimator = TravelEstimator(
-            settle_seconds=settings.neutral_settle_seconds,
-            settle_tolerance=settings.neutral_settle_tolerance,
-        )
+        self._estimator = TravelEstimator(**_estimator_settings(settings))
         self._opener = opener
         self._lock = threading.Lock()
         self._sample: AngleSample | None = None
@@ -346,10 +354,7 @@ class SensorAngleSource:
         return bool(self._thread and self._thread.is_alive())
 
     def retune(self, settings: Settings) -> None:
-        self._estimator.retune(
-            settle_seconds=settings.neutral_settle_seconds,
-            settle_tolerance=settings.neutral_settle_tolerance,
-        )
+        self._estimator.retune(**_estimator_settings(settings))
 
     # --- Reading ---------------------------------------------------------
 
