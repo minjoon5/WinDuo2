@@ -366,3 +366,46 @@ class TestSuspension:
         harness.controller.resume()
         harness.run(40.0, velocity=0.0, frames=5)
         assert harness.controller.phase is Phase.IDLE
+
+
+class TestNeutralAngleDuringARun:
+    def test_a_re_zero_mid_run_does_not_move_the_perspective(self):
+        # Measured on a Galaxy Book: the lid stopped partway, neutral re-zeroed
+        # from 120 to 90 degrees, and the picture stretched up before easing
+        # out. Every frame of a run has to share one start angle.
+        controller = EffectController(Settings())
+        now = 0.0
+        frames = []
+        angle = 120.0
+        for _ in range(40):
+            now += 1 / 60
+            angle -= 0.5
+            controller.observe(
+                AngleSample(
+                    travel=120.0 - angle, velocity=30.0, confidence=1.0,
+                    timestamp=now, at_rest=False, absolute_angle=angle,
+                ),
+                now,
+            )
+            frame = controller.step(now)
+            if frame is not None:
+                frames.append(frame)
+        # The lid stops at 100 and that becomes neutral: travel falls to zero.
+        for _ in range(120):
+            now += 1 / 60
+            controller.observe(
+                AngleSample(
+                    travel=0.0, velocity=0.0, confidence=1.0,
+                    timestamp=now, at_rest=True, absolute_angle=angle,
+                ),
+                now,
+            )
+            frame = controller.step(now)
+            if frame is not None:
+                frames.append(frame)
+        assert frames and frames[-1].is_final
+        assert {round(f.start_angle, 6) for f in frames} == {round(frames[0].start_angle, 6)}
+        # And the ease back never tilts further than where it started from.
+        separations = [f.start_angle - f.current_angle for f in frames]
+        peak = separations.index(max(separations))
+        assert all(b <= a + 1e-9 for a, b in zip(separations[peak:], separations[peak + 1:], strict=False))

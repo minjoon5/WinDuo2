@@ -189,7 +189,11 @@ class EffectController:
         self._velocity = sample.velocity
         self._confidence = sample.confidence
         self._sample_time = sample.timestamp
-        if sample.absolute_angle > 0:
+        # Held for the whole run. Neutral re-zeros when a lid stops partway,
+        # which moves this by the full travel in one reading; mid-run that
+        # moved the eye the perspective is built around, and the picture
+        # stretched up the screen before easing back to flat.
+        if sample.absolute_angle > 0 and self.phase is Phase.IDLE:
             self._neutral_angle = sample.absolute_angle + sample.travel
         if sample.velocity >= TRIGGER_SPEED:
             self._last_closing = now
