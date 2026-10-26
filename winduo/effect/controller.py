@@ -326,13 +326,12 @@ class EffectController:
         )
 
     def profile(self, frame: Frame, screen_size: tuple[float, float]):
-        """The per-row projection the shader draws, lean included."""
+        """The per-row projection the shader draws."""
         return self.geometry.profile(
             start_angle=frame.start_angle,
             current_angle=frame.current_angle,
             viewing_distance_ratio=self.settings.viewing_distance,
             recession=self.settings.recession,
-            top_lean=self.settings.top_lean,
             screen_size=screen_size,
         )
 

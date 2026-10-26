@@ -164,11 +164,11 @@ class TestBlurGradient:
         assert gradient.blur_strength(-3) == 0.0
         assert gradient.dim_strength(9) == 1.0
 
-    def test_blur_starts_slowly_and_dimming_starts_quickly(self):
-        # The curves are deliberately different: the blur should hold off so the
-        # picture stays readable as it begins to move, while the dimming leads.
+    def test_blur_keeps_pace_and_dimming_leads(self):
+        # The blur grows in step with the close, so it is already clear partway
+        # down; the dimming leads it.
         gradient = BlurGradient()
-        assert gradient.blur_strength(0.5) < 0.5
+        assert gradient.blur_strength(0.5) == pytest.approx(0.5)
         assert gradient.dim_strength(0.5) > 0.5
 
 
@@ -177,12 +177,12 @@ class TestProfile:
 
     SIZE = (1600.0, 1000.0)
 
-    def _profile(self, current, lean, start=100.0, distance=3.0):
+    def _profile(self, current, start=100.0, distance=3.0):
         from winduo.effect.geometry import DepthGeometry
 
-        return DepthGeometry().profile(start, current, distance, 1.0, lean, self.SIZE)
+        return DepthGeometry().profile(start, current, distance, 1.0, self.SIZE)
 
-    def test_without_lean_it_is_the_flat_sheet_exactly(self):
+    def test_it_is_the_flat_sheet_exactly(self):
         import numpy as np
 
         from winduo.effect.geometry import DepthGeometry
@@ -190,7 +190,7 @@ class TestProfile:
 
         corners = DepthGeometry().corners(100.0, 60.0, 3.0, 1.0, self.SIZE)
         matrix = screen_to_picture(*self.SIZE, corners)
-        profile = self._profile(60.0, 0.0)
+        profile = self._profile(60.0)
         for x in (0.0, 400.0, 800.0, 1500.0):
             for y in (0.0, 120.0, 500.0, 999.0):
                 mapped = matrix @ np.array([x, y, 1.0])
@@ -200,46 +200,29 @@ class TestProfile:
                 assert got[1] == pytest.approx(expected[1], abs=0.05)
 
     def test_no_travel_is_the_identity(self):
-        profile = self._profile(100.0, 0.6)
+        profile = self._profile(100.0)
         for x, y in ((0.0, 0.0), (800.0, 500.0), (1600.0, 999.0)):
             got = profile.picture_point(x, y)
             assert got[0] == pytest.approx(x, abs=0.05)
             assert got[1] == pytest.approx(y, abs=0.05)
 
     def test_the_hinge_row_stays_pinned(self):
-        for lean in (0.0, 0.6, 1.0):
-            profile = self._profile(50.0, lean)
-            assert profile.picture_point(0.0, 0.0) == pytest.approx((0.0, 0.0), abs=1e-6)
-            assert profile.picture_point(1600.0, 0.0) == pytest.approx((1600.0, 0.0), abs=1e-6)
-
-    def test_lean_brings_the_top_forward(self):
-        flat = self._profile(50.0, 0.0)
-        leaning = self._profile(50.0, 0.6)
-        # Closer to the viewer, so wider on the glass at the top edge.
-        assert leaning.table[-1][1] > flat.table[-1][1]
-
-    def test_lean_leaves_the_part_near_the_hinge_alone(self):
-        flat = self._profile(50.0, 0.0)
-        leaning = self._profile(50.0, 1.0)
-        for y in (0.0, 50.0, 150.0):
-            assert leaning.picture_point(300.0, y) == pytest.approx(
-                flat.picture_point(300.0, y), abs=0.5
-            )
+        profile = self._profile(50.0)
+        assert profile.picture_point(0.0, 0.0) == pytest.approx((0.0, 0.0), abs=1e-6)
+        assert profile.picture_point(1600.0, 0.0) == pytest.approx((1600.0, 0.0), abs=1e-6)
 
     def test_rows_are_monotonic_so_the_picture_never_folds(self):
         for current in (95.0, 70.0, 40.0, 15.0):
-            for lean in (0.0, 0.6, 1.0):
-                rows = [row for row, _ in self._profile(current, lean).table]
-                assert all(b >= a for a, b in zip(rows, rows[1:], strict=False))
+            rows = [row for row, _ in self._profile(current).table]
+            assert all(b >= a for a, b in zip(rows, rows[1:], strict=False))
 
     def test_scales_stay_positive_and_finite(self):
         import math
 
         for current in (95.0, 40.0, 13.0):
-            for lean in (0.0, 1.0):
-                profile = self._profile(current, lean)
-                assert math.isfinite(profile.end) and profile.end > 0
-                assert all(0.0 < scale <= 1.0 + 1e-9 for _, scale in profile.table)
+            profile = self._profile(current)
+            assert math.isfinite(profile.end) and profile.end > 0
+            assert all(0.0 < scale <= 1.0 + 1e-9 for _, scale in profile.table)
 
 
 class TestTiltKnee:

@@ -25,10 +25,6 @@ DEFAULT_NEUTRAL_ANGLE = 100.0
 #: between entries well under a pixel of error on a 4K panel.
 PROFILE_SAMPLES = 128
 
-#: Fraction of the height, measured up from the hinge, where the lean begins.
-#: Below it the picture is the exact flat sheet held still in the room.
-LEAN_START = 0.35
-
 
 @dataclass
 class DepthGeometry:
@@ -103,25 +99,18 @@ class DepthGeometry:
         current_angle: float,
         viewing_distance_ratio: float,
         recession: float,
-        top_lean: float,
         screen_size: tuple[float, float],
         samples: int = PROFILE_SAMPLES,
     ) -> Profile:
-        """The curved-sheet projection, as a per-row lookup the shader can invert.
+        """The flat-sheet projection, as a per-row lookup the shader can invert.
 
-        ``corners`` treats the picture as one flat sheet held still in the room.
-        That is exact, and at the end of a close it is also unkind: the glass has
-        turned so far under a sheet that is still upright that the top half of
-        the picture projects off the top of the screen, and what remains is a
-        magnified strip of whatever sat just above the hinge.
+        The same sheet ``corners`` describes, held still in the room and hinged
+        at the bottom of the screen. It used to be able to lean its upper part
+        forward as well, which curved the picture; that read as the screen
+        bending and was removed.
 
-        Here the sheet stays fixed in the room near the hinge and its upper part
-        leans forward, curling back toward the glass. ``top_lean`` is how far:
-        0 is the flat sheet exactly, 1 brings the top edge parallel to the
-        glass. Content near the top of the screen then tips toward the viewer
-        and stays visible, instead of sliding off the glass.
-
-        A bent sheet is not a homography, so the result is a table. Entry ``i``
+        The result is a table rather than a homography so the shader's lookup
+        stays the same shape. Entry ``i``
         describes screen row ``y = i / (samples - 1) * end``: which picture row
         lands there, as a fraction of the height, and the horizontal scale at
         that row. Rows above ``end`` continue the last entry at ``slope``
@@ -137,7 +126,6 @@ class DepthGeometry:
         current = math.radians(current_angle)
         travel = max(start_angle - current_angle, 0.0)
         separation = math.radians(min(recession * travel, self.max_separation_degrees))
-        lean = min(max(top_lean, 0.0), 1.0)
 
         reach = height * viewing_distance_ratio + height / 2 * math.cos(start)
         rise = height / 2 * math.sin(start)
@@ -147,8 +135,7 @@ class DepthGeometry:
             height * self.min_depth_fraction,
         )
 
-        # Walk up the sheet by arc length. Below LEAN_START it is the flat sheet;
-        # above, its angle to the glass eases off smoothly toward zero.
+        # Walk up the sheet by arc length.
         steps = samples * 4
         ds = height / steps
         u = b = 0.0
@@ -156,11 +143,8 @@ class DepthGeometry:
         rows = [0.0]
         scales = [1.0]
         for i in range(steps):
-            mid = (i + 0.5) * ds / height
-            ease = _smoothstep(LEAN_START, 1.0, mid)
-            angle = separation * (1.0 - lean * ease)
-            u += math.cos(angle) * ds
-            b += math.sin(angle) * ds
+            u += math.cos(separation) * ds
+            b += math.sin(separation) * ds
             scale = depth / (depth + b)
             arc.append((i + 1) * ds / height)
             # Monotonic by construction for any eye in front of the glass; the
@@ -192,11 +176,6 @@ class DepthGeometry:
         slope = (arc[-1] - arc[-2]) / last if last > 1e-12 else 0.0
         return Profile(table=table, end=end, slope=slope, width=width, height=height)
 
-
-
-def _smoothstep(edge0: float, edge1: float, x: float) -> float:
-    t = min(max((x - edge0) / (edge1 - edge0), 0.0), 1.0)
-    return t * t * (3.0 - 2.0 * t)
 
 
 @dataclass

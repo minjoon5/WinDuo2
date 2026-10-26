@@ -54,3 +54,29 @@ class TestTheLightSettings:
         settings = Settings().clamped()
         assert settings.hinge_glow == 0.5
         assert settings.reflection_intensity == 0.5
+
+
+class TestSaving:
+    def test_only_changed_values_are_written(self, tmp_path):
+        # A default that changes later has to reach anyone who never touched
+        # it, which a file holding every value would block.
+        import json
+
+        from winduo.config import Store
+
+        path = tmp_path / "config.json"
+        store = Store(config_path=path)
+        store.update(max_blur_radius=60.0)
+        assert json.loads(path.read_text()) == {"max_blur_radius": 60.0}
+        assert Store(config_path=path).settings.max_blur_radius == 60.0
+
+    def test_reset_leaves_nothing_behind(self, tmp_path):
+        import json
+
+        from winduo.config import Store
+
+        path = tmp_path / "config.json"
+        store = Store(config_path=path)
+        store.update(recession=2.0)
+        store.reset_settings()
+        assert json.loads(path.read_text()) == {}

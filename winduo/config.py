@@ -57,12 +57,10 @@ class Settings:
 
     # --- Look ------------------------------------------------------------
     #: Gaussian blur radius at the far edge, in points.
-    #: 90 rather than 135: with the tilt eased, the picture stays in view to the
-    #: end of a close, and at 135 what stays in view is unreadable mush.
-    max_blur_radius: float = 90.0
+    max_blur_radius: float = 150.0
     #: Blur at the hinge edge as a fraction of the blur at the far edge.
     #: 0 blurs the far edge only, 1 blurs the whole picture evenly.
-    blur_evenness: float = 0.0
+    blur_evenness: float = 0.3
     #: Opacity of the darkening where the blur is at full strength.
     #: Short of black on purpose. A picture that holds still in the room should
     #: still be faintly there at the end of a close, not vanish.
@@ -92,11 +90,6 @@ class Settings:
     #: 1.0 holds the picture still in the room. 0.6 because at 1.0 the picture
     #: dropped away too quickly to follow on a Galaxy Book Pro 360.
     recession: float = 0.6
-    #: How far the upper part of the picture leans forward, toward the viewer,
-    #: while the part near the hinge stays still in the room. 0 is a flat
-    #: sheet; 1 brings the top edge parallel to the glass. A little of it keeps
-    #: what sits near the top of the screen readable for longer into a close.
-    top_lean: float = 0.6
     #: The most the picture tilts, in degrees past the trigger, however far the
     #: lid goes. The tilt follows the lid one for one at first, so the picture
     #: holds still in the room, then eases toward this. 0 turns the easing off
@@ -141,7 +134,6 @@ class Settings:
         out.reflection_intensity = _clamp(out.reflection_intensity, 0.0, 1.0)
         out.viewing_distance = _clamp(out.viewing_distance, 1.0, 6.0)
         out.recession = _clamp(out.recession, 0.0, 3.0)
-        out.top_lean = _clamp(out.top_lean, 0.0, 1.0)
         out.tilt_limit = _clamp(out.tilt_limit, 0.0, 90.0)
         out.neutral_settle_seconds = _clamp(out.neutral_settle_seconds, 0.15, 3.0)
         out.neutral_settle_tolerance = _clamp(out.neutral_settle_tolerance, 0.3, 6.0)
@@ -254,7 +246,12 @@ def _save(path: Path, value) -> None:
         # Write beside the target and swap, so a crash mid-write cannot leave a
         # truncated settings file behind.
         scratch = path.with_suffix(path.suffix + ".tmp")
-        scratch.write_text(json.dumps(asdict(value), indent=2), encoding="utf-8")
+        # Only what differs from the defaults, so a changed default reaches
+        # everyone who never moved that slider, rather than staying frozen at
+        # whatever the default was when the file was first written.
+        defaults = asdict(type(value)())
+        changed = {k: v for k, v in asdict(value).items() if defaults.get(k) != v}
+        scratch.write_text(json.dumps(changed, indent=2), encoding="utf-8")
         scratch.replace(path)
     except OSError:
         log.warning("could not save %s", path.name, exc_info=True)

@@ -179,14 +179,14 @@ class SettingsWindow(QWidget):
         # --- Look
         layout.addWidget(SectionLabel("Look"))
         self._blur = SliderRow(
-            "Blur", 10, 200, 135, suffix=" px",
+            "Blur", 10, 200, 150, suffix=" px",
             help_text="Blur radius at the top edge, furthest from the hinge.",
         )
         self._blur.changed.connect(lambda v: self._apply(max_blur_radius=v))
         layout.addWidget(self._blur)
 
         self._blur_spread = SliderRow(
-            "Blur spread", 0, 1, 0, suffix="%", display_scale=100,
+            "Blur spread", 0, 1, 0.3, suffix="%", display_scale=100,
             help_text="0 blurs the top edge only, 100 blurs the whole picture.",
         )
         self._blur_spread.changed.connect(lambda v: self._apply(blur_evenness=v))
@@ -243,15 +243,6 @@ class SettingsWindow(QWidget):
         )
         layout.addWidget(self._perspective)
 
-        self._top_lean = SliderRow(
-            "Top lean", 0, 1, 0.6, suffix="%", display_scale=100,
-            help_text=(
-                "How far the top of the picture tips toward you while the "
-                "bottom stays put. 0 is a flat sheet."
-            ),
-        )
-        self._top_lean.changed.connect(lambda v: self._apply(top_lean=v))
-        layout.addWidget(self._top_lean)
 
         self._tilt_limit = SliderRow(
             "Tilt limit", 0, 90, 55, suffix="\u00b0",
@@ -386,7 +377,6 @@ class SettingsWindow(QWidget):
             self._hinge_glow.set_value(settings.hinge_glow)
             self._reflection.set_value(settings.reflection_intensity)
             self._recession.set_value(settings.recession)
-            self._top_lean.set_value(settings.top_lean)
             self._tilt_limit.set_value(settings.tilt_limit)
             self._perspective.set_value(
                 perspective_from_distance(settings.viewing_distance)

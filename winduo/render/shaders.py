@@ -38,8 +38,7 @@ FRAGMENT = """
 
 uniform sampler2D uPicture;
 
-// Screen row to picture row, as a lookup: the sheet leans forward near its top,
-// which no single homography can express. Entry i covers screen row
+// Screen row to picture row, as a lookup. Entry i covers screen row
 // i / (PROFILE_SAMPLES - 1) * uProfileEnd; x is the picture row as a fraction of
 // the height and y the horizontal scale about the centre at that row. Above
 // uProfileEnd the last entry continues at uProfileSlope rows per point, so the

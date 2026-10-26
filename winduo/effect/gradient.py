@@ -36,8 +36,10 @@ _MOTION_MAX_BOOST = 0.35
 
 @dataclass(frozen=True)
 class BlurGradient:
-    # Exponent on the closing travel. Above 1 starts slowly.
-    blur_curve: float = 1.6
+    # Exponent on the closing travel. Above 1 starts slowly. 1 so the blur
+    # keeps pace with the close: at 1.6 a lid closed 40 degrees had under a
+    # quarter of its blur, which read as weak on a Galaxy Book Pro 360.
+    blur_curve: float = 1.0
     # Exponent on the closing travel, for the dimming.
     dim_curve: float = 0.7
     # Dimming at the hinge edge as a fraction of the dimming at the far edge.
