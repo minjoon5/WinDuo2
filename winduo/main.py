@@ -37,6 +37,11 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         help="print the lid sensor's readings for 20 seconds and exit",
     )
     parser.add_argument(
+        "--overlay-check",
+        action="store_true",
+        help="tint the screen with each overlay window setting in turn, to find one that fails",
+    )
+    parser.add_argument(
         "--settings",
         action="store_true",
         help="open the settings window at launch",
@@ -87,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     app.setFont(ui_font(9))
     # The tray owns the lifetime. Closing the last window must not quit.
     app.setQuitOnLastWindowClosed(False)
+
+    if options.overlay_check:
+        from winduo.render.overlay_check import run_overlay_check
+
+        return run_overlay_check(app)
 
     store = Store()
     engine = Engine(store)

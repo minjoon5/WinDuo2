@@ -264,6 +264,7 @@ class _DepthView(QOpenGLWidget):
 
         profile = _profile_uniform(params.profile)
         if profile is None:
+            log.debug("frame skipped: the sheet's profile cannot be drawn")
             return
 
         GL.glUseProgram(self._program)
@@ -502,6 +503,12 @@ class DepthOverlay:
         self._revealed = False
         self._window.setWindowOpacity(0.0)
         self._shown = True
+        log.debug(
+            "overlay shown: window %s, screen %s, picture %s",
+            self._window.geometry(),
+            screen_size,
+            picture_size,
+        )
         if not self._excluded:
             self._excluded = win32.exclude_from_capture(self._window, True)
         # Raised each run, so a window that has since gone topmost above us
@@ -525,6 +532,7 @@ class DepthOverlay:
         if self._revealed or self._window is None:
             return
         self._revealed = True
+        log.debug("revealing the overlay")
         self._animate_to(1.0, self.FADE_IN_MS)
 
     def dismiss(self, animated: bool = True) -> None:
