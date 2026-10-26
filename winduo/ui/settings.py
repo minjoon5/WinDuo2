@@ -179,7 +179,7 @@ class SettingsWindow(QWidget):
         # --- Look
         layout.addWidget(SectionLabel("Look"))
         self._blur = SliderRow(
-            "Blur", 10, 200, 150, suffix=" px",
+            "Blur", 10, 300, 210, suffix=" px",
             help_text="Blur radius at the top edge, furthest from the hinge.",
         )
         self._blur.changed.connect(lambda v: self._apply(max_blur_radius=v))

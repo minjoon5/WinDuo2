@@ -38,7 +38,7 @@ __all__ = [
 #: Black margin around the picture, in points. Kept above the largest blur
 #: radius the settings allow, so the blur always reaches real black on every
 #: side instead of smearing the edge pixel outward.
-PADDING_POINTS = 120.0
+PADDING_POINTS = 300.0
 
 #: The overlay's window title, which is how the Hyprland helper finds it.
 OVERLAY_TITLE = "WinDuo overlay"
