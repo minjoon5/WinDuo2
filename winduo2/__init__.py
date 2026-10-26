@@ -5,4 +5,4 @@ Windows, reading the laptop's hinge angle sensor or lid accelerometer instead
 of the Apple HID sensor.
 """
 
-__version__ = "0.1.3"
+__version__ = "1.0.0"
