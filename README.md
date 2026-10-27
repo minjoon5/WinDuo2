@@ -17,7 +17,7 @@ pip install git+https://github.com/minjoon5/WinDuo2
 python -m winduo2
 ```
 
-WinDuo2 sits in the notification area. Right-click it for settings.
+WinDuo2 sits in the notification area. Right-click it for settings. Tick *Start with Windows* there to have it run every time you sign in; it then appears in Task Manager under *Startup apps*.
 
 To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 --sensors` and move the lid: it prints the angle it sees for twenty seconds. `python -m winduo2 --preview` plays the effect once on whatever is on screen.
 

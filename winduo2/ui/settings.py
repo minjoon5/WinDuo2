@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from winduo2 import autostart
 from winduo2.config import (
     Store,
     distance_from_perspective,
@@ -134,6 +135,15 @@ class SettingsWindow(QWidget):
         switches.addWidget(
             help_label("Off holds the frame from the moment the effect started.")
         )
+
+        self._launch = QCheckBox("Start with Windows")
+        self._launch.toggled.connect(lambda v: self._apply(launch_at_login=v))
+        self._launch_help = help_label("Runs WinDuo2 when you sign in.")
+        switches.addWidget(self._launch)
+        switches.addWidget(self._launch_help)
+        # On Linux the install script already starts it with Hyprland.
+        self._launch.setVisible(autostart.is_supported())
+        self._launch_help.setVisible(autostart.is_supported())
         layout.addLayout(switches)
 
         # --- Sensor
@@ -344,6 +354,7 @@ class SettingsWindow(QWidget):
         try:
             self._enabled.setChecked(settings.enabled)
             self._live.setChecked(settings.live_picture)
+            self._launch.setChecked(settings.launch_at_login)
             self._trigger.set_value(settings.trigger_travel)
             self._span.set_value(settings.full_effect_travel)
             self._blur.set_value(settings.max_blur_radius)

@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
 
     store = Store()
     engine = Engine(store)
+    _follow_launch_at_login(store)
 
     if options.preview:
         return _run_preview(app, engine)
@@ -185,6 +186,25 @@ def _print_sensor(seconds: float = 20.0) -> int:
     finally:
         source.stop()
     return 0
+
+
+def _follow_launch_at_login(store) -> None:
+    """Keep the Windows startup entry in step with the setting."""
+    from winduo2 import autostart
+
+    applied = store.settings.launch_at_login
+    # Written on every start, not just when the box is ticked, so the entry
+    # follows the exe if it has moved since.
+    autostart.sync(applied)
+
+    def changed() -> None:
+        nonlocal applied
+        wanted = store.settings.launch_at_login
+        if wanted != applied:
+            applied = wanted
+            autostart.sync(wanted)
+
+    store.subscribe(changed)
 
 
 if __name__ == "__main__":
