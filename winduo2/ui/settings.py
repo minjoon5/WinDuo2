@@ -230,8 +230,8 @@ class SettingsWindow(QWidget):
         self._recession = SliderRow(
             "Lean back", 0, 3, 0.8, suffix="\u00d7", decimals=1,
             help_text=(
-                "Degrees of lean per degree of closing. 1 holds the picture "
-                "still in the room."
+                "Degrees of lean per degree of closing. Higher drops the top "
+                "of the picture further."
             ),
         )
         self._recession.changed.connect(lambda v: self._apply(recession=v))

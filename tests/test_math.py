@@ -191,8 +191,10 @@ class TestProfile:
         corners = DepthGeometry().corners(100.0, 60.0, 3.0, 1.0, self.SIZE)
         matrix = screen_to_picture(*self.SIZE, corners)
         profile = self._profile(60.0)
+        # Rows up to the top edge only. Above it the table extrapolates into
+        # the black margin, which the homography does not describe.
         for x in (0.0, 400.0, 800.0, 1500.0):
-            for y in (0.0, 120.0, 500.0, 999.0):
+            for y in (0.0, 120.0, 500.0, profile.end - 1.0):
                 mapped = matrix @ np.array([x, y, 1.0])
                 expected = mapped[:2] / mapped[2]
                 got = profile.picture_point(x, y)

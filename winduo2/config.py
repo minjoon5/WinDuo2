@@ -88,10 +88,11 @@ class Settings:
     #:
     #: 3 is roughly a laptop at arm's length: a 20 cm tall panel seen from about
     #: 60 cm. The perspective has to be about that strong for the picture to
-    #: read as holding still in the room; at 6 it reads as a flat squash.
+    #: read as leaning back; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room. 0.8 because at 1.0 the picture
+    #: The eye is held in front of the glass, so the lean is what brings the
+    #: top edge down: at 0.8 it ends about a quarter of the way down. 0.8 because at 1.0 the picture
     #: dropped away too quickly to follow on a Galaxy Book Pro 360, while 0.4
     #: up to 0.7 left it not dropping far enough.
     recession: float = 0.8

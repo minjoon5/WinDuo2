@@ -3,10 +3,15 @@
 Ported from ``DepthOverlay.swift``'s ``DepthGeometry`` (Apache 2.0, Copyright
 2026 Makito).
 
-The picture is a sheet hinged to the bottom edge of the screen, turned back in
-world space by the angle the lid has travelled. The eye stays where it is while
-the glass rotates under it, so the projection takes both the current lid angle
-and the eye position.
+The picture is a sheet hinged to the bottom edge of the screen, leaning back
+from the glass as the lid closes. The eye sits straight out from the middle of
+the screen, ``viewing_distance_ratio`` screen heights away, and stays there
+relative to the glass.
+
+It used to stay put in the room instead, while the glass turned toward it. That
+carried the projected top edge *up* past the top of the screen faster than the
+lean brought it down, so the picture only narrowed at the top and never visibly
+dropped. Measured from the glass, the top edge comes down as the sheet leans.
 """
 
 from __future__ import annotations
@@ -38,6 +43,11 @@ class DepthGeometry:
     # eye ends up behind the glass.
     min_depth_fraction: float = 0.1
 
+    def _eye(self, viewing_distance_ratio: float, height: float) -> tuple[float, float]:
+        """The eye measured along the glass from the hinge, and away from it."""
+        depth = max(height * viewing_distance_ratio, height * self.min_depth_fraction)
+        return height / 2, depth
+
     def corners(
         self,
         start_angle: float,
@@ -52,28 +62,15 @@ class DepthGeometry:
 
         ``start_angle`` is the lid angle at which the effect began, so travel is
         measured from there. ``recession`` is degrees the picture turns away
-        from the glass per degree the lid closes; 1.0 holds the picture still in
-        the room.
+        from the glass per degree the lid closes.
         """
         width, height = float(screen_size[0]), float(screen_size[1])
         if width <= 0 or height <= 0:
             raise ValueError("screen_size must be positive")
 
-        start = math.radians(start_angle)
-        current = math.radians(current_angle)
         travel = max(start_angle - current_angle, 0.0)
         separation = math.radians(min(recession * travel, self.max_separation_degrees))
-
-        # The eye in world axes, hinge at the origin.
-        reach = height * viewing_distance_ratio + height / 2 * math.cos(start)
-        rise = height / 2 * math.sin(start)
-
-        # The same eye, measured along the glass and away from it.
-        along = reach * math.cos(current) + rise * math.sin(current)
-        depth = max(
-            reach * math.sin(current) - rise * math.cos(current),
-            height * self.min_depth_fraction,
-        )
+        along, depth = self._eye(viewing_distance_ratio, height)
 
         half = width / 2
         sin_sep = math.sin(separation)
@@ -104,8 +101,8 @@ class DepthGeometry:
     ) -> Profile:
         """The flat-sheet projection, as a per-row lookup the shader can invert.
 
-        The same sheet ``corners`` describes, held still in the room and hinged
-        at the bottom of the screen. It used to be able to lean its upper part
+        The same sheet ``corners`` describes, hinged at the bottom of the
+        screen. It used to be able to lean its upper part
         forward as well, which curved the picture; that read as the screen
         bending and was removed.
 
@@ -122,18 +119,9 @@ class DepthGeometry:
             raise ValueError("screen_size must be positive")
         samples = max(int(samples), 2)
 
-        start = math.radians(start_angle)
-        current = math.radians(current_angle)
         travel = max(start_angle - current_angle, 0.0)
         separation = math.radians(min(recession * travel, self.max_separation_degrees))
-
-        reach = height * viewing_distance_ratio + height / 2 * math.cos(start)
-        rise = height / 2 * math.sin(start)
-        along = reach * math.cos(current) + rise * math.sin(current)
-        depth = max(
-            reach * math.sin(current) - rise * math.cos(current),
-            height * self.min_depth_fraction,
-        )
+        along, depth = self._eye(viewing_distance_ratio, height)
 
         # Walk up the sheet by arc length.
         steps = samples * 4
