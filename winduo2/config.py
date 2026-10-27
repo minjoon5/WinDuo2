@@ -91,10 +91,10 @@ class Settings:
     #: read as holding still in the room; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room. 0.7 because at 1.0 the picture
+    #: 1.0 holds the picture still in the room. 0.8 because at 1.0 the picture
     #: dropped away too quickly to follow on a Galaxy Book Pro 360, while 0.4
-    #: and then 0.5 left it not dropping far enough.
-    recession: float = 0.7
+    #: up to 0.7 left it not dropping far enough.
+    recession: float = 0.8
     #: The most the picture tilts, in degrees past the trigger, however far the
     #: lid goes. The tilt follows the lid one for one at first, so the picture
     #: holds still in the room, then eases toward this. 0 turns the easing off
