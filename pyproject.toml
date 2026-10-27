@@ -8,7 +8,6 @@ version = "1.0.0"
 description = "Lean the screen away as the laptop lid closes, read from the lid sensor"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Basel Ashraf", email = "hello@baselashraf.com" }]
 keywords = ["windows", "overlay", "opengl", "laptop", "lid-angle", "accelerometer"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -42,9 +41,6 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 Homepage = "https://github.com/minjoon5/duo"
 Source = "https://github.com/minjoon5/duo"
 Issues = "https://github.com/minjoon5/duo/issues"
-Author = "https://baselashraf.com"
-Funding = "https://ko-fi.com/baselashraf"
-"Reference implementation" = "https://github.com/sumimakito/Mac-Duo"
 
 [project.gui-scripts]
 winduo2 = "winduo2.main:main"

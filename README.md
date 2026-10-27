@@ -2,7 +2,7 @@
 
 Close your laptop lid and the screen leans away, blurring and dimming as it goes, the way an iPhone Duo does as it folds shut.
 
-WinDuo2 is a modified version of [WinDuo](https://github.com/BaselAshraf81/winduo) by Basel Ashraf. [Mac Duo](https://github.com/sumimakito/Mac-Duo) reads the MacBook's lid angle sensor. WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
+WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
 
 Windows 10 (2004+) and 11, Linux on Hyprland
 
