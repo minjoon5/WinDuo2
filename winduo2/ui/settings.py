@@ -186,7 +186,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._blur)
 
         self._blur_spread = SliderRow(
-            "Blur spread", 0, 1, 0.3, suffix="%", display_scale=100,
+            "Blur spread", 0, 1, 0.2, suffix="%", display_scale=100,
             help_text="0 blurs the top edge only, 100 blurs the whole picture.",
         )
         self._blur_spread.changed.connect(lambda v: self._apply(blur_evenness=v))
@@ -228,7 +228,7 @@ class SettingsWindow(QWidget):
         # --- Perspective
         layout.addWidget(SectionLabel("Perspective"))
         self._recession = SliderRow(
-            "Lean back", 0, 3, 0.4, suffix="\u00d7", decimals=1,
+            "Lean back", 0, 3, 0.5, suffix="\u00d7", decimals=1,
             help_text=(
                 "Degrees of lean per degree of closing. 1 holds the picture "
                 "still in the room."

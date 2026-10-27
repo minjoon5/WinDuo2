@@ -61,7 +61,7 @@ class Settings:
     max_blur_radius: float = 290.0
     #: Blur at the hinge edge as a fraction of the blur at the far edge.
     #: 0 blurs the far edge only, 1 blurs the whole picture evenly.
-    blur_evenness: float = 0.3
+    blur_evenness: float = 0.2
     #: Opacity of the darkening where the blur is at full strength.
     #: Short of black on purpose. A picture that holds still in the room should
     #: still be faintly there at the end of a close, not vanish.
@@ -90,10 +90,10 @@ class Settings:
     #: read as holding still in the room; at 6 it reads as a flat squash.
     viewing_distance: float = 3.0
     #: Degrees the picture turns away from the glass per degree of closing.
-    #: 1.0 holds the picture still in the room. 0.4 because at 1.0, and still
-    #: slightly at 0.6 and 0.5, the picture dropped away too quickly to follow
-    #: on a Galaxy Book Pro 360.
-    recession: float = 0.4
+    #: 1.0 holds the picture still in the room. 0.5 because at 1.0, and still
+    #: slightly at 0.6, the picture dropped away too quickly to follow on a
+    #: Galaxy Book Pro 360, while 0.4 left it not dropping far enough.
+    recession: float = 0.5
     #: The most the picture tilts, in degrees past the trigger, however far the
     #: lid goes. The tilt follows the lid one for one at first, so the picture
     #: holds still in the room, then eases toward this. 0 turns the easing off
