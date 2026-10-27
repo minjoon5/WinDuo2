@@ -179,14 +179,14 @@ class SettingsWindow(QWidget):
         # --- Look
         layout.addWidget(SectionLabel("Look"))
         self._blur = SliderRow(
-            "Blur", 10, 400, 290, suffix=" px",
+            "Blur", 10, 400, 280, suffix=" px", steps=390,
             help_text="Blur radius at the top edge, furthest from the hinge.",
         )
         self._blur.changed.connect(lambda v: self._apply(max_blur_radius=v))
         layout.addWidget(self._blur)
 
         self._blur_spread = SliderRow(
-            "Blur spread", 0, 1, 0.2, suffix="%", display_scale=100,
+            "Blur spread", 0, 1, 0.0, suffix="%", display_scale=100,
             help_text="0 blurs the top edge only, 100 blurs the whole picture.",
         )
         self._blur_spread.changed.connect(lambda v: self._apply(blur_evenness=v))
@@ -272,7 +272,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._confidence_floor)
 
         self._settle = SliderRow(
-            "Treat as resting after", 0.15, 3.0, 0.4, suffix=" s", decimals=2,
+            "Treat as resting after", 0.15, 3.0, 0.4, suffix=" s", decimals=2, steps=285,
             help_text=(
                 "How long the lid must hold still before that position becomes "
                 "the new neutral."
@@ -292,7 +292,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._hold)
 
         self._render_width = SliderRow(
-            "Capture width", 640, 3840, 1600, suffix=" px",
+            "Capture width", 640, 3840, 2160, suffix=" px",
             help_text=(
                 "Lower is smoother on a high-resolution screen, and the picture "
                 "is blurring anyway."
@@ -360,7 +360,7 @@ class SettingsWindow(QWidget):
             self._confidence_floor.set_value(settings.confidence_floor)
             self._settle.set_value(settings.neutral_settle_seconds)
             self._hold.set_value(settings.partial_hold_seconds)
-            self._render_width.set_value(settings.render_width_cap or 1600)
+            self._render_width.set_value(settings.render_width_cap or 2160)
         finally:
             self._applying = False
 

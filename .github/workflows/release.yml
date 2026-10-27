@@ -78,6 +78,8 @@ jobs:
           --name WinDuo2
           --icon winduo2/ui/icon.ico
           --add-data winduo2/ui/icon.png:winduo2/ui
+          --add-data winduo2/ui/check.png:winduo2/ui
+          --add-data winduo2/ui/check@2x.png:winduo2/ui
           --collect-submodules PyQt6.QtCore
           --collect-submodules PyQt6.QtGui
           --collect-submodules PyQt6.QtWidgets

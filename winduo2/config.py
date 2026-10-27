@@ -58,10 +58,11 @@ class Settings:
     # --- Look ------------------------------------------------------------
     #: Gaussian blur radius at the far edge, in points. The blur is a mip level,
     #: log2 of the radius, so a visible step needs about 1.4 times the radius.
-    max_blur_radius: float = 290.0
+    max_blur_radius: float = 280.0
     #: Blur at the hinge edge as a fraction of the blur at the far edge.
-    #: 0 blurs the far edge only, 1 blurs the whole picture evenly.
-    blur_evenness: float = 0.2
+    #: 0 blurs the far edge only, 1 blurs the whole picture evenly. 0 so the
+    #: blur fades all the way to nothing at the bottom of the screen.
+    blur_evenness: float = 0.0
     #: Opacity of the darkening where the blur is at full strength.
     #: Short of black on purpose. A picture that holds still in the room should
     #: still be faintly there at the end of a close, not vanish.
@@ -117,7 +118,7 @@ class Settings:
     #: Capture the screen no wider than this, in pixels. The picture is
     #: receding and blurring while the effect runs, so full resolution buys
     #: very little and costs a lot of memory bandwidth. 0 means native.
-    render_width_cap: int = 1600
+    render_width_cap: int = 2160
 
     # --- Housekeeping ----------------------------------------------------
     launch_at_login: bool = False

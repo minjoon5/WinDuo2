@@ -92,6 +92,9 @@ class SliderRow(QWidget):
         self._suffix = suffix
         self._decimals = decimals
         self._display_scale = display_scale
+        #: The value last set from outside, shown as is until the slider moves,
+        #: so a default between two steps does not read as its neighbour.
+        self._exact: float | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -132,6 +135,8 @@ class SliderRow(QWidget):
         return f"{value * self._display_scale:.{self._decimals}f}{self._suffix}"
 
     def value(self) -> float:
+        if self._exact is not None:
+            return self._exact
         span = self._maximum - self._minimum
         return self._minimum + span * (self._slider.value() / self._steps)
 
@@ -142,9 +147,11 @@ class SliderRow(QWidget):
         blocked = self._slider.blockSignals(True)
         self._slider.setValue(position)
         self._slider.blockSignals(blocked)
+        self._exact = float(value)
         self._refresh()
 
     def _on_slider(self, _position: int) -> None:
+        self._exact = None
         self._refresh()
         self.changed.emit(self.value())
 

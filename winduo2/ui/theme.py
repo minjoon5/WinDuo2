@@ -22,6 +22,10 @@ from PyQt6.QtGui import (
 
 __all__ = ["Palette", "STYLESHEET", "app_icon", "tray_icon", "ui_font"]
 
+#: White tick drawn inside a checked checkbox. ``check@2x.png`` beside it is
+#: picked up automatically on high-DPI screens.
+CHECK_PATH = Path(__file__).with_name("check.png").as_posix()
+
 
 class Palette:
     """Named colours. Every text pair below is 4.5:1 or better on its ground."""
@@ -258,6 +262,7 @@ QCheckBox::indicator:hover {{
 QCheckBox::indicator:checked {{
     background: {P.ACCENT};
     border-color: {P.ACCENT_SUNK};
+    image: url({CHECK_PATH});
 }}
 
 QCheckBox::indicator:focus {{

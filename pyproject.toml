@@ -50,7 +50,7 @@ winduo2 = "winduo2.main:main"
 include = ["winduo2*"]
 
 [tool.setuptools.package-data]
-winduo2 = ["ui/icon.png", "ui/icon.ico"]
+winduo2 = ["ui/icon.png", "ui/icon.ico", "ui/check.png", "ui/check@2x.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
