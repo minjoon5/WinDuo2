@@ -9,6 +9,12 @@ three things it has no API for decide whether this effect works at all:
 - **Click-through.** ``WS_EX_TRANSPARENT`` sends hit-testing straight past the
   window, so the applications underneath keep working normally.
 - **Staying above full-screen windows.** ``HWND_TOPMOST`` without activation.
+
+Topmost is not the top, though. The pointer is drawn by the display hardware
+after composition, and the Start menu, search and the notification flyouts
+live in z-order bands above every topmost window that only a signed
+``uiAccess`` process can reach. The pointer is therefore hidden and drawn into
+the picture instead, and those flyouts are closed when the effect starts.
 """
 
 from __future__ import annotations
@@ -26,6 +32,11 @@ __all__ = [
     "make_click_through",
     "raise_topmost",
     "is_windows",
+    "pointer_image",
+    "pointer_position",
+    "hide_pointer",
+    "restore_pointer",
+    "close_shell_flyouts",
     "MIN_BUILD_FOR_CAPTURE_EXCLUSION",
 ]
 
@@ -141,3 +152,336 @@ def windows_build() -> int:
 
 def supports_capture_exclusion() -> bool:
     return windows_build() >= MIN_BUILD_FOR_CAPTURE_EXCLUSION
+
+
+# --- The pointer ---------------------------------------------------------
+
+_CURSOR_SHOWING = 0x00000001
+_DI_NORMAL = 0x0003
+_SPI_SETCURSORS = 0x0057
+_DIB_RGB_COLORS = 0
+
+#: Every system cursor ``SetSystemCursor`` can replace. Applications that ask
+#: for a stock cursor get these shared ones, so blanking them hides the pointer
+#: almost everywhere; only an application drawing a cursor of its own keeps it.
+_SYSTEM_CURSORS = (
+    32512,  # OCR_NORMAL
+    32513,  # OCR_IBEAM
+    32514,  # OCR_WAIT
+    32515,  # OCR_CROSS
+    32516,  # OCR_UP
+    32642,  # OCR_SIZENWSE
+    32643,  # OCR_SIZENESW
+    32644,  # OCR_SIZEWE
+    32645,  # OCR_SIZENS
+    32646,  # OCR_SIZEALL
+    32648,  # OCR_NO
+    32649,  # OCR_HAND
+    32650,  # OCR_APPSTARTING
+    32651,  # OCR_HELP
+)
+
+
+class _CURSORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("hCursor", wintypes.HANDLE),
+        ("ptScreenPos", wintypes.POINT),
+    ]
+
+
+class _ICONINFO(ctypes.Structure):
+    _fields_ = [
+        ("fIcon", wintypes.BOOL),
+        ("xHotspot", wintypes.DWORD),
+        ("yHotspot", wintypes.DWORD),
+        ("hbmMask", wintypes.HBITMAP),
+        ("hbmColor", wintypes.HBITMAP),
+    ]
+
+
+class _BITMAP(ctypes.Structure):
+    _fields_ = [
+        ("bmType", wintypes.LONG),
+        ("bmWidth", wintypes.LONG),
+        ("bmHeight", wintypes.LONG),
+        ("bmWidthBytes", wintypes.LONG),
+        ("bmPlanes", wintypes.WORD),
+        ("bmBitsPixel", wintypes.WORD),
+        ("bmBits", ctypes.c_void_p),
+    ]
+
+
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", wintypes.LONG),
+        ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG),
+        ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+def _gdi():
+    """user32 and gdi32 with the handle-sized signatures 64-bit Python needs."""
+    user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+    user32.GetCursorInfo.argtypes = [ctypes.POINTER(_CURSORINFO)]
+    user32.GetIconInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ICONINFO)]
+    user32.DrawIconEx.argtypes = [
+        wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.HANDLE,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT, wintypes.HBRUSH, wintypes.UINT,
+    ]
+    user32.CreateCursor.restype = wintypes.HANDLE
+    user32.CreateCursor.argtypes = [
+        wintypes.HINSTANCE, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_void_p, ctypes.c_void_p,
+    ]
+    user32.SetSystemCursor.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    gdi32.GetObjectW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p]
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+    gdi32.CreateDIBSection.argtypes = [
+        wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
+        ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD,
+    ]
+    gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+    return user32, gdi32
+
+
+def pointer_image():
+    """The pointer as it looks now: a straight-alpha BGRA array and its hotspot.
+
+    ``None`` when there is no pointer on screen, as when typing or using touch
+    has hidden it. Drawn twice, over black and over white, because that is the
+    one way to recover alpha that works for every kind of cursor: per-pixel
+    alpha, old monochrome masks, and the inverting ones such as the text caret,
+    which come out white.
+    """
+    if not is_windows():
+        return None
+    import numpy as np
+
+    user32, gdi32 = _gdi()
+    info = _CURSORINFO(cbSize=ctypes.sizeof(_CURSORINFO))
+    if not user32.GetCursorInfo(ctypes.byref(info)):
+        return None
+    if not info.flags & _CURSOR_SHOWING or not info.hCursor:
+        return None
+
+    icon = _ICONINFO()
+    if not user32.GetIconInfo(info.hCursor, ctypes.byref(icon)):
+        return None
+    try:
+        bitmap = _BITMAP()
+        gdi32.GetObjectW(icon.hbmMask, ctypes.sizeof(_BITMAP), ctypes.byref(bitmap))
+        width = bitmap.bmWidth
+        # A monochrome cursor stacks its AND and XOR masks in one bitmap.
+        height = bitmap.bmHeight if icon.hbmColor else bitmap.bmHeight // 2
+        hotspot = (int(icon.xHotspot), int(icon.yHotspot))
+    finally:
+        for handle in (icon.hbmMask, icon.hbmColor):
+            if handle:
+                gdi32.DeleteObject(handle)
+    if width <= 0 or height <= 0:
+        return None
+
+    header = _BITMAPINFOHEADER(
+        biSize=ctypes.sizeof(_BITMAPINFOHEADER),
+        biWidth=width,
+        biHeight=-height,  # top-down rows
+        biPlanes=1,
+        biBitCount=32,
+    )
+    bits = ctypes.c_void_p()
+    dc = gdi32.CreateCompatibleDC(None)
+    surface = gdi32.CreateDIBSection(
+        dc, ctypes.byref(header), _DIB_RGB_COLORS, ctypes.byref(bits), None, 0
+    )
+    if not dc or not surface or not bits.value:
+        if surface:
+            gdi32.DeleteObject(surface)
+        if dc:
+            gdi32.DeleteDC(dc)
+        return None
+    previous = gdi32.SelectObject(dc, surface)
+    try:
+        size = width * height * 4
+        drawn = []
+        for background in (0x00, 0xFF):
+            ctypes.memset(bits, background, size)
+            user32.DrawIconEx(dc, 0, 0, info.hCursor, width, height, 0, None, _DI_NORMAL)
+            gdi32.GdiFlush()
+            drawn.append(
+                np.frombuffer(ctypes.string_at(bits, size), dtype=np.uint8)
+                .reshape(height, width, 4)[:, :, :3]
+                .astype(np.int32)
+            )
+    finally:
+        gdi32.SelectObject(dc, previous)
+        gdi32.DeleteObject(surface)
+        gdi32.DeleteDC(dc)
+
+    over_black, over_white = drawn
+    alpha = np.clip(255 - (over_white - over_black).max(axis=2), 0, 255)
+    colour = np.where(
+        alpha[:, :, None] > 0,
+        np.clip(over_black * 255 // np.maximum(alpha, 1)[:, :, None], 0, 255),
+        0,
+    )
+    image = np.dstack([colour, alpha]).astype(np.uint8)
+    return image, hotspot
+
+
+def pointer_position() -> tuple[int, int] | None:
+    """Where the pointer's hotspot is, in device pixels of the virtual screen."""
+    if not is_windows():
+        return None
+    point = wintypes.POINT()
+    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return None
+    return point.x, point.y
+
+
+def hide_pointer() -> bool:
+    """Swap every system cursor for a blank one until :func:`restore_pointer`.
+
+    ``ShowCursor`` only counts for the calling thread's own windows, and this
+    window takes no input, so the system cursors themselves are what has to
+    change. Each ``SetSystemCursor`` takes ownership of the cursor it is given,
+    so every one gets a fresh blank.
+    """
+    if not is_windows():
+        return False
+    user32, _ = _gdi()
+    width = user32.GetSystemMetrics(13)  # SM_CXCURSOR
+    height = user32.GetSystemMetrics(14)  # SM_CYCURSOR
+    stride = (width + 15) // 16 * 2
+    and_mask = ctypes.create_string_buffer(b"\xff" * (stride * height))
+    xor_mask = ctypes.create_string_buffer(stride * height)
+    instance = ctypes.windll.kernel32.GetModuleHandleW(None)
+    hidden = False
+    for cursor_id in _SYSTEM_CURSORS:
+        blank = user32.CreateCursor(instance, 0, 0, width, height, and_mask, xor_mask)
+        if blank and user32.SetSystemCursor(blank, cursor_id):
+            hidden = True
+    if not hidden:
+        log.warning("could not hide the pointer (%d)", ctypes.windll.kernel32.GetLastError())
+    return hidden
+
+
+def restore_pointer() -> None:
+    """Reload the user's cursor scheme, undoing :func:`hide_pointer`."""
+    if not is_windows():
+        return
+    ctypes.windll.user32.SystemParametersInfoW(_SPI_SETCURSORS, 0, None, 0)
+
+
+# --- Shell flyouts -------------------------------------------------------
+
+#: Processes that host only the shell's light-dismiss surfaces: Start, search,
+#: the notification centre and quick settings. They sit in a z-order band above
+#: every topmost window, so the overlay cannot cover them.
+_SHELL_FLYOUT_HOSTS = frozenset(
+    {
+        "startmenuexperiencehost.exe",
+        "searchhost.exe",
+        "searchapp.exe",
+        "searchui.exe",
+        "shellexperiencehost.exe",
+        "shellhost.exe",
+    }
+)
+
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_INPUT_KEYBOARD = 1
+_KEYEVENTF_KEYUP = 0x0002
+_VK_ESCAPE = 0x1B
+
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _INPUTUNION(ctypes.Union):
+    # The mouse member is the largest; it sets the size SendInput checks.
+    _fields_ = [("ki", _KEYBDINPUT), ("mi", _MOUSEINPUT)]
+
+
+class _INPUT(ctypes.Structure):
+    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+
+def _foreground_process_name() -> str:
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    window = user32.GetForegroundWindow()
+    if not window:
+        return ""
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(window, ctypes.byref(pid))
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    process = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    if not process:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(1024)
+        length = wintypes.DWORD(len(buffer))
+        if not kernel32.QueryFullProcessImageNameW(
+            wintypes.HANDLE(process), 0, buffer, ctypes.byref(length)
+        ):
+            return ""
+        return buffer.value.rsplit("\\", 1)[-1].lower()
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(process))
+
+
+def close_shell_flyouts() -> bool:
+    """Close Start, search or a notification flyout if one has the focus.
+
+    Being above them would need ``uiAccess``, which only a signed executable
+    installed under Program Files gets. Escape is what closes them by hand, and
+    it is only sent when one of them is in front, so it can never reach an
+    application. Returns True when it sent one.
+    """
+    if not is_windows():
+        return False
+    if _foreground_process_name() not in _SHELL_FLYOUT_HOSTS:
+        return False
+    down = _INPUT(type=_INPUT_KEYBOARD)
+    down.u.ki = _KEYBDINPUT(wVk=_VK_ESCAPE)
+    up = _INPUT(type=_INPUT_KEYBOARD)
+    up.u.ki = _KEYBDINPUT(wVk=_VK_ESCAPE, dwFlags=_KEYEVENTF_KEYUP)
+    inputs = (_INPUT * 2)(down, up)
+    sent = ctypes.windll.user32.SendInput(2, inputs, ctypes.sizeof(_INPUT))
+    log.info("closed a shell flyout that sat above the overlay")
+    return sent == 2

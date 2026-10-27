@@ -39,6 +39,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 - **It needs a sensor in the lid.** Convertibles have one for screen rotation; most ordinary clamshell laptops have none, and then WinDuo2 says so in the tray. Convertibles that carry a second accelerometer in the base have both read, and WinDuo2 follows whichever one turns with the lid, so the first close after starting may only partly show the effect. If `--sensors` still shows an angle that does not change as the lid moves, the only accelerometer Windows exposes is in the base, which cannot see the lid.
 - **With only the accelerometer, tipping the whole laptop back can trigger it.** It cannot tell the lid turning from the machine turning. A laptop being carried reads as far from 1 g and is ignored, but a slow tilt is not. A hinge angle sensor has neither problem.
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
+- **Start, search and the notification flyouts close when the effect starts.** Windows keeps them in a layer above every window an ordinary app can make, so they cannot be blurred in place; closing them is what the lid closing would do anyway. The pointer is hidden for the length of the effect and drawn into the picture instead, so it blurs with everything else. An app that draws a cursor of its own, as some games do, keeps it sharp.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
 

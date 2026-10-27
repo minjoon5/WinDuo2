@@ -22,6 +22,7 @@ from winduo2.log import get_logger
 from winduo2.render import win32
 from winduo2.render.capture import CaptureError, ScreenCapture
 from winduo2.render.overlay import DepthOverlay, FrameParams
+from winduo2.render.pointer import PointerStandIn
 
 log = get_logger("app")
 
@@ -91,6 +92,7 @@ class Engine(QObject):
         self.controller = EffectController(store.settings)
         self.sensor = SensorAngleSource(store.settings)
         self.overlay = DepthOverlay()
+        self.pointer = PointerStandIn()
         self.capture: ScreenCapture | None = None
         self.lid = LidSwitch(self._on_lid_change)
 
@@ -193,7 +195,7 @@ class Engine(QObject):
 
         if frame is None:
             if self.overlay.is_visible:
-                self.overlay.dismiss(animated=True)
+                self._dismiss()
             self._update_prewarm(now)
             self._timer.setInterval(int(self.controller.poll_interval * 1000))
             return
@@ -204,7 +206,7 @@ class Engine(QObject):
         self._draw(frame)
 
         if frame.is_final:
-            self.overlay.dismiss(animated=True)
+            self._dismiss()
             self._prewarm_until = now + self.PREWARM_LINGER
             self.changed.emit()
 
@@ -274,6 +276,8 @@ class Engine(QObject):
         new_frame = (
             self.capture.take() if self.capture is not None and wants_frame else None
         )
+        if new_frame is not None and self.capture is not None:
+            new_frame = self.pointer.draw(new_frame, self.capture.native_size)
         self.overlay.submit(new_frame, params)
 
     # --- Pre-warming -----------------------------------------------------
@@ -352,6 +356,13 @@ class Engine(QObject):
             # back into itself. One held frame still looks right.
             log.info("no capture exclusion available, holding a single frame")
 
+        # Start and the other shell flyouts sit above any window this app may
+        # make, and the pointer above all of them, so neither would be covered
+        # by the effect. The flyouts are closed, as the lid closing would do
+        # anyway, and the pointer moves into the picture.
+        win32.close_shell_flyouts()
+        self.pointer.begin()
+
         self.changed.emit()
         return True
 
@@ -370,8 +381,14 @@ class Engine(QObject):
         if not self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
             self._problem = "The graphics driver would not start the renderer."
 
+    def _dismiss(self) -> None:
+        """Fade the overlay out and give the pointer back."""
+        self.overlay.dismiss(animated=True)
+        self.pointer.end()
+
     def _teardown_effect(self) -> None:
         self.overlay.dismiss(animated=False)
+        self.pointer.end()
         self._release_capture()
         self._preview = None
 

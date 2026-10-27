@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import sys
+import time
 
 import numpy as np
 from OpenGL import GL
@@ -375,6 +376,10 @@ class DepthOverlay:
 
     FADE_IN_MS = 70
     FADE_OUT_MS = 220
+    #: How often a running effect re-asserts topmost, in seconds. Another
+    #: topmost window brought forward mid-run, the taskbar among them, would
+    #: otherwise stay sharp in front of the effect until the next run.
+    RAISE_INTERVAL = 0.25
 
     def __init__(self) -> None:
         self._window: QWidget | None = None
@@ -385,6 +390,7 @@ class DepthOverlay:
         self._excluded = False
         self._configured: tuple[tuple[float, float], tuple[int, int]] | None = None
         self._built = False
+        self._raised_at = 0.0
 
     # --- State -----------------------------------------------------------
 
@@ -538,11 +544,16 @@ class DepthOverlay:
         # Raised each run, so a window that has since gone topmost above us
         # does not end up in front of the effect.
         win32.raise_topmost(self._window)
+        self._raised_at = time.monotonic()
         return True
 
     def submit(self, frame: np.ndarray | None, params: FrameParams) -> None:
         if self._view is None or not self._shown:
             return
+        now = time.monotonic()
+        if self._window is not None and now - self._raised_at >= self.RAISE_INTERVAL:
+            win32.raise_topmost(self._window)
+            self._raised_at = now
         self._view.submit(frame, params)
         if self._view.has_picture:
             self._reveal()
