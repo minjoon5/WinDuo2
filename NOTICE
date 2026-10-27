@@ -12,7 +12,7 @@ WinDuo
 Copyright 2026 Basel Ashraf <https://baselashraf.com>
 
 WinDuo is licensed under the PolyForm Noncommercial License 1.0.0. See
-LICENSE for the full terms, including the Required Notice lines that must
+LICENSE.md for the full terms, including the Required Notice lines that must
 accompany any copy of this software: attribution to Basel Ashraf, and
 attribution to Mac Duo below.
 
@@ -58,7 +58,7 @@ picture. Each is noted at its own definition.
 Mac Duo's original Apache License, Version 2.0 permits relicensing derivative
 works under different terms (Section 4), provided the original copyright,
 attribution, and NOTICE requirements are preserved, which is what this file
-and LICENSE do. The full text of the Apache License, Version 2.0, under which
+and LICENSE.md do. The full text of the Apache License, Version 2.0, under which
 Makito's original Mac Duo source is itself licensed, is reproduced below for
 reference and applies to that original upstream work:
 

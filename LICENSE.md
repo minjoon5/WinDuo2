@@ -1,9 +1,11 @@
-PolyForm Noncommercial License 1.0.0
+# PolyForm Noncommercial License 1.0.0
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
 
 Required Notice: Copyright 민준 (https://github.com/minjoon5/duo)
+
 Required Notice: Copyright Basel Ashraf (https://baselashraf.com)
+
 Required Notice: Portions ported from Mac Duo, Copyright Makito
 (https://github.com/sumimakito/Mac-Duo), originally licensed under the
 Apache License, Version 2.0. See NOTICE for the specific files and the

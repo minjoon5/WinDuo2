@@ -4,7 +4,7 @@ Close your laptop lid and the screen leans away, blurring and dimming as it goes
 
 WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
 
-Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
+Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE.md)
 
 ## Install
 
