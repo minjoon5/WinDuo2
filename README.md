@@ -8,12 +8,12 @@ Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [Pol
 
 ## Install
 
-**Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/duo/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
+**Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/WinDuo2/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
 
 **From source:**
 
 ```sh
-pip install git+https://github.com/minjoon5/duo
+pip install git+https://github.com/minjoon5/WinDuo2
 python -m winduo2
 ```
 
@@ -45,7 +45,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 ## Linux (Omarchy / Hyprland)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/minjoon5/duo/main/packaging/omarchy/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minjoon5/WinDuo2/main/packaging/omarchy/install.sh | bash
 ```
 
 This installs the Arch packages it needs, creates a virtualenv under `~/.local/share/winduo2`, and starts WinDuo2 with Hyprland. `packaging/omarchy/uninstall.sh` undoes it. Differences from Windows:

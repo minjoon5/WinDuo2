@@ -2,7 +2,7 @@
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
 
-Required Notice: Copyright 민준 (https://github.com/minjoon5/duo)
+Required Notice: Copyright 민준 (https://github.com/minjoon5/WinDuo2)
 
 Required Notice: Copyright Basel Ashraf (https://baselashraf.com)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install WinDuo2 on Omarchy (Arch + Hyprland).
 #
-#   curl -fsSL https://raw.githubusercontent.com/minjoon5/duo/main/packaging/omarchy/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/minjoon5/WinDuo2/main/packaging/omarchy/install.sh | bash
 #   # or, from a checkout:
 #   ./packaging/omarchy/install.sh
 #
@@ -15,7 +15,7 @@
 # Undo it all with packaging/omarchy/uninstall.sh.
 set -euo pipefail
 
-REPO="${WINDUO2_REPO:-https://github.com/minjoon5/duo}"
+REPO="${WINDUO2_REPO:-https://github.com/minjoon5/WinDuo2}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/winduo2"
 BIN="$HOME/.local/bin"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
