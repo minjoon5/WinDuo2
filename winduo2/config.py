@@ -119,7 +119,7 @@ class Settings:
     #: Capture the screen no wider than this, in pixels. The picture is
     #: receding and blurring while the effect runs, so full resolution buys
     #: very little and costs a lot of memory bandwidth. 0 means native.
-    render_width_cap: int = 2160
+    render_width_cap: int = 2000
 
     # --- Housekeeping ----------------------------------------------------
     launch_at_login: bool = False

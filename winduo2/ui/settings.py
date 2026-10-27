@@ -302,7 +302,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._hold)
 
         self._render_width = SliderRow(
-            "Capture width", 640, 3840, 2160, suffix=" px",
+            "Capture width", 640, 3840, 2000, suffix=" px",
             help_text=(
                 "Lower is smoother on a high-resolution screen, and the picture "
                 "is blurring anyway."
@@ -371,7 +371,7 @@ class SettingsWindow(QWidget):
             self._confidence_floor.set_value(settings.confidence_floor)
             self._settle.set_value(settings.neutral_settle_seconds)
             self._hold.set_value(settings.partial_hold_seconds)
-            self._render_width.set_value(settings.render_width_cap or 2160)
+            self._render_width.set_value(settings.render_width_cap or 2000)
         finally:
             self._applying = False
 
