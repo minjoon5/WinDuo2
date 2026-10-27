@@ -155,7 +155,7 @@ class SliderRow(QWidget):
 
 
 class HoldMeter(QWidget):
-    """Fills while the lid is held still. A paint stroke laid down left to right."""
+    """Fills while the lid is held still, left to right."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -181,7 +181,7 @@ class HoldMeter(QWidget):
         if self._progress <= 0:
             return
         painter.setBrush(
-            QColor(Palette.GOOD if self._steady else Palette.OXIDE)
+            QColor(Palette.GOOD if self._steady else Palette.ACCENT)
         )
         painter.drawRoundedRect(
             QRectF(0, 0, self.width() * self._progress, 4), 2, 2

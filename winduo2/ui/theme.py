@@ -1,13 +1,10 @@
 """The scene shop, as interface tokens.
 
-The world is a scene painter's flat: oiled canvas stretched on a frame, chalk
-snap-lines struck across it, paint in oxide red and Prussian blue, everything
-squared up against a marked sightline. A painted flat is an image built to read
-correctly from one seat while the surface it sits on is angled away from the
-audience, which is exactly what this app does to a screen.
+A light ground with a single blue accent and softly rounded controls, so the
+settings window sits comfortably beside Windows' own light mode.
 
-These windows are Operate surfaces. The world shows up in material and detail,
-never in a way that makes a slider harder to find. Contrast is checked against
+These windows are Operate surfaces. Nothing here should make a slider harder
+to find. Contrast is checked against
 WCAG 2.2 AA, and the accent is never the only carrier of meaning.
 """
 
@@ -29,30 +26,31 @@ __all__ = ["Palette", "STYLESHEET", "app_icon", "tray_icon", "ui_font"]
 class Palette:
     """Named colours. Every text pair below is 4.5:1 or better on its ground."""
 
-    # Oiled canvas seen under work light, not black. A flat in a scene shop is
-    # warm and slightly uneven, and the app is used in a lit room.
-    CANVAS = "#1c1a17"
-    CANVAS_RAISED = "#252220"
-    CANVAS_SUNK = "#141210"
-    FRAME = "#3a3531"
+    # A light, slightly cool ground. The app is used in a lit room, and a
+    # settings window that matches Windows' light mode sits quietly beside it.
+    CANVAS = "#f4f6f9"
+    CANVAS_RAISED = "#ffffff"
+    CANVAS_SUNK = "#e8ecf1"
+    FRAME = "#d3d9e1"
+    FRAME_STRONG = "#b4bdc9"
 
-    # Chalk, struck and then rubbed back.
-    CHALK = "#f2ede4"          # 13.9:1 on CANVAS
-    CHALK_SOFT = "#bdb5a8"     # 7.6:1 on CANVAS
-    CHALK_FAINT = "#8d857a"    # 4.6:1 on CANVAS
+    # Ink.
+    CHALK = "#1a2230"          # 15.2:1 on CANVAS
+    CHALK_SOFT = "#465163"     # 7.9:1 on CANVAS
+    CHALK_FAINT = "#667183"    # 4.8:1 on CANVAS
 
-    # Scene paint. Oxide red is the active mark; Prussian blue is the layout
-    # line, used where something is measured rather than chosen.
-    OXIDE = "#c1502e"
-    OXIDE_BRIGHT = "#e2703f"
-    OXIDE_SUNK = "#9c3d21"
-    PRUSSIAN = "#4a7fa5"
-    PRUSSIAN_BRIGHT = "#6fa3c7"
+    # Blue is the active mark, and its deeper shade is used where something is
+    # measured rather than chosen.
+    ACCENT = "#2563eb"
+    ACCENT_BRIGHT = "#3b78f0"
+    ACCENT_SUNK = "#1d4fc4"
+    ACCENT_SOFT = "#dbe6fd"
+    MEASURE = "#1d4fc4"        # 6.9:1 on CANVAS
 
     # Status. Paired with text in the interface, never colour alone.
-    GOOD = "#7fa663"
-    WARN = "#d99b45"
-    BAD = "#cf5b4d"
+    GOOD = "#2f8a57"
+    WARN = "#b7791f"
+    BAD = "#c53b30"
 
 
 def ui_font(size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
@@ -74,7 +72,7 @@ def ui_font(size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> QFont
 
 
 def label_font(size: int = 8) -> QFont:
-    """Small tracked caps, the way a scene shop stencils a label onto a flat."""
+    """Small tracked caps for section labels."""
     font = ui_font(size, QFont.Weight.DemiBold)
     font.setCapitalization(QFont.Capitalization.AllUppercase)
     font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 112)
@@ -93,7 +91,7 @@ QDialog, QMainWindow {{
     background: {P.CANVAS};
 }}
 
-/* Chalk snap-line. Used to separate stages, never as decoration. */
+/* A hairline between stages, never decoration. */
 QFrame[role="rule"] {{
     background: {P.FRAME};
     max-height: 1px;
@@ -115,24 +113,24 @@ QLabel[role="help"] {{
 }}
 
 QLabel[role="reading"] {{
-    color: {P.PRUSSIAN_BRIGHT};
+    color: {P.MEASURE};
     font-weight: 600;
 }}
 
 QLabel[role="notice"] {{
     background: {P.CANVAS_RAISED};
     border: 1px solid {P.FRAME};
-    border-radius: 4px;
+    border-radius: 10px;
     padding: 10px 12px;
     color: {P.CHALK_SOFT};
 }}
 
 QLabel[role="alert"] {{
-    background: #2b1f1b;
-    border: 1px solid {P.OXIDE_SUNK};
-    border-radius: 4px;
+    background: #fdeeec;
+    border: 1px solid #f1bcb6;
+    border-radius: 10px;
     padding: 10px 12px;
-    color: #f0d9d1;
+    color: #7f2219;
 }}
 
 /* --- Buttons ---------------------------------------------------------- */
@@ -140,14 +138,14 @@ QLabel[role="alert"] {{
 QPushButton {{
     background: {P.CANVAS_RAISED};
     border: 1px solid {P.FRAME};
-    border-radius: 3px;
+    border-radius: 8px;
     padding: 7px 16px;
     color: {P.CHALK};
 }}
 
 QPushButton:hover {{
-    background: #2e2a27;
-    border-color: #4b453f;
+    background: #f8fafc;
+    border-color: {P.FRAME_STRONG};
 }}
 
 QPushButton:pressed {{
@@ -156,95 +154,114 @@ QPushButton:pressed {{
 
 QPushButton:focus {{
     outline: none;
-    border-color: {P.PRUSSIAN_BRIGHT};
+    border-color: {P.ACCENT};
 }}
 
 QPushButton:disabled {{
     color: {P.CHALK_FAINT};
     background: {P.CANVAS_SUNK};
-    border-color: #2c2825;
+    border-color: {P.FRAME};
 }}
 
 QPushButton[role="primary"] {{
-    background: {P.OXIDE};
-    border-color: {P.OXIDE_SUNK};
-    color: #fff6f2;
+    background: {P.ACCENT};
+    border-color: {P.ACCENT_SUNK};
+    color: #ffffff;
     font-weight: 600;
 }}
 
 QPushButton[role="primary"]:hover {{
-    background: {P.OXIDE_BRIGHT};
+    background: {P.ACCENT_BRIGHT};
 }}
 
 QPushButton[role="primary"]:pressed {{
-    background: {P.OXIDE_SUNK};
+    background: {P.ACCENT_SUNK};
 }}
 
 QPushButton[role="primary"]:disabled {{
-    background: #4a3229;
-    border-color: #3c2a23;
-    color: #a08b83;
+    background: #a9bff0;
+    border-color: #9db3e6;
+    color: #f2f6fe;
 }}
 
 /* --- Sliders ---------------------------------------------------------- */
 
+/* No margin on the groove: the filled and empty parts ignore it and would
+   otherwise paint the slider's full height. The handle's negative margin
+   sets the slider's height instead. */
+QSlider {{
+    background: transparent;
+}}
+
 QSlider::groove:horizontal {{
-    height: 2px;
-    background: {P.FRAME};
-    margin: 8px 0;
+    height: 6px;
+    background: {P.CANVAS_SUNK};
+    border: none;
+    border-radius: 3px;
 }}
 
 QSlider::sub-page:horizontal {{
-    background: {P.OXIDE};
-    height: 2px;
+    background: {P.ACCENT};
+    border-radius: 3px;
+}}
+
+QSlider::add-page:horizontal {{
+    background: {P.FRAME};
+    border-radius: 3px;
 }}
 
 QSlider::handle:horizontal {{
-    background: {P.CHALK};
-    border: none;
+    background: {P.CANVAS_RAISED};
+    border: 2px solid {P.ACCENT};
     width: 12px;
     height: 12px;
-    margin: -6px 0;
-    border-radius: 6px;
+    margin: -5px 0;
+    border-radius: 8px;
 }}
 
 QSlider::handle:horizontal:hover {{
-    background: #ffffff;
+    border-color: {P.ACCENT_BRIGHT};
+    background: {P.ACCENT_SOFT};
 }}
 
 QSlider:focus::handle:horizontal {{
-    background: {P.OXIDE_BRIGHT};
+    border-color: {P.ACCENT_SUNK};
+}}
+
+QSlider::sub-page:horizontal:disabled {{
+    background: {P.FRAME_STRONG};
 }}
 
 QSlider::handle:horizontal:disabled {{
-    background: {P.CHALK_FAINT};
+    border-color: {P.FRAME_STRONG};
 }}
 
 /* --- Checkboxes ------------------------------------------------------- */
 
 QCheckBox {{
     spacing: 9px;
+    background: transparent;
 }}
 
 QCheckBox::indicator {{
-    width: 15px;
-    height: 15px;
-    border: 1px solid #514a44;
-    border-radius: 3px;
-    background: {P.CANVAS_SUNK};
+    width: 16px;
+    height: 16px;
+    border: 1px solid {P.FRAME_STRONG};
+    border-radius: 5px;
+    background: {P.CANVAS_RAISED};
 }}
 
 QCheckBox::indicator:hover {{
-    border-color: {P.CHALK_FAINT};
+    border-color: {P.ACCENT};
 }}
 
 QCheckBox::indicator:checked {{
-    background: {P.OXIDE};
-    border-color: {P.OXIDE_SUNK};
+    background: {P.ACCENT};
+    border-color: {P.ACCENT_SUNK};
 }}
 
 QCheckBox::indicator:focus {{
-    border-color: {P.PRUSSIAN_BRIGHT};
+    border-color: {P.ACCENT_SUNK};
 }}
 
 QCheckBox:disabled {{
@@ -256,13 +273,13 @@ QCheckBox:disabled {{
 QComboBox {{
     background: {P.CANVAS_RAISED};
     border: 1px solid {P.FRAME};
-    border-radius: 3px;
+    border-radius: 8px;
     padding: 5px 10px;
     color: {P.CHALK};
 }}
 
 QComboBox:focus {{
-    border-color: {P.PRUSSIAN_BRIGHT};
+    border-color: {P.ACCENT};
 }}
 
 QComboBox::drop-down {{
@@ -273,8 +290,9 @@ QComboBox::drop-down {{
 QComboBox QAbstractItemView {{
     background: {P.CANVAS_RAISED};
     border: 1px solid {P.FRAME};
-    selection-background-color: {P.OXIDE};
-    selection-color: #fff6f2;
+    border-radius: 8px;
+    selection-background-color: {P.ACCENT};
+    selection-color: #ffffff;
     outline: none;
 }}
 
@@ -291,13 +309,13 @@ QScrollBar:vertical {{
 }}
 
 QScrollBar::handle:vertical {{
-    background: {P.FRAME};
+    background: {P.FRAME_STRONG};
     border-radius: 4px;
     min-height: 28px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background: #4f4842;
+    background: #98a3b2;
 }}
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
@@ -313,17 +331,18 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
 QMenu {{
     background: {P.CANVAS_RAISED};
     border: 1px solid {P.FRAME};
+    border-radius: 10px;
     padding: 5px;
 }}
 
 QMenu::item {{
     padding: 6px 26px 6px 14px;
-    border-radius: 3px;
+    border-radius: 6px;
 }}
 
 QMenu::item:selected {{
-    background: {P.OXIDE};
-    color: #fff6f2;
+    background: {P.ACCENT};
+    color: #ffffff;
 }}
 
 QMenu::item:disabled {{
@@ -346,6 +365,7 @@ QToolTip {{
     background: {P.CANVAS_RAISED};
     color: {P.CHALK};
     border: 1px solid {P.FRAME};
+    border-radius: 6px;
     padding: 5px 7px;
 }}
 """
