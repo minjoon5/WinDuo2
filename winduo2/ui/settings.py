@@ -333,7 +333,7 @@ class SettingsWindow(QWidget):
             'Based on <a href="https://github.com/BaselAshraf81/winduo" '
             'style="color:#6fa3c7;">WinDuo</a> by Basel Ashraf. Ported from '
             '<a href="https://github.com/sumimakito/Mac-Duo" '
-            'style="color:#6fa3c7;">Mac Duo</a> by Makito. Free for noncommercial use.'
+            'style="color:#6fa3c7;">Mac Duo</a> by Makito.'
         )
         credit.setOpenExternalLinks(True)
         credit.setWordWrap(True)
