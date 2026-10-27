@@ -4,7 +4,7 @@ Close your laptop lid and the screen leans away, blurring and dimming as it goes
 
 WinDuo2 is a modified version of [WinDuo](https://github.com/BaselAshraf81/winduo) by Basel Ashraf. [Mac Duo](https://github.com/sumimakito/Mac-Duo) reads the MacBook's lid angle sensor. WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
 
-Windows 10 (2004+) and 11, Windhawk, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
+Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE)
 
 ## Install
 
@@ -41,10 +41,6 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
-
-## Windhawk
-
-[windhawk/winduo2.wh.cpp](windhawk/winduo2.wh.cpp) is a native C++ build of the same effect packaged as a [Windhawk](https://windhawk.net) mod. It runs in its own process, injects into nothing, and needs no Python. It still reads the lid from the webcam rather than the sensors.
 
 ## Linux (Omarchy / Hyprland)
 
