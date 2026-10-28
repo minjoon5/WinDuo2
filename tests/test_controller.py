@@ -411,6 +411,103 @@ class TestNeutralAngleDuringARun:
         assert all(b <= a + 1e-9 for a, b in zip(separations[peak:], separations[peak + 1:], strict=False))
 
 
+class TestOpening:
+    """Opening runs the effect backwards, from where the last close started."""
+
+    @staticmethod
+    def open_from(harness: Harness, angle: float, to: float, rate: float = 60.0):
+        """Rest at ``angle``, then open toward ``to``. Returns every frame."""
+        controller = harness.controller
+        neutral = angle
+        for _ in range(30):
+            harness.now += STEP
+            controller.observe(
+                AngleSample(
+                    travel=0.0, velocity=0.0, confidence=0.9,
+                    timestamp=harness.now, at_rest=True, absolute_angle=angle,
+                ),
+                harness.now,
+            )
+            controller.step(harness.now)
+        frames = []
+        while angle < to:
+            angle = min(angle + rate * STEP, to)
+            harness.now += STEP
+            controller.observe(
+                AngleSample(
+                    travel=neutral - angle, velocity=-rate, confidence=0.9,
+                    timestamp=harness.now, at_rest=False, absolute_angle=angle,
+                ),
+                harness.now,
+            )
+            frame = controller.step(harness.now)
+            if frame is not None:
+                frames.append(frame)
+        return frames
+
+    def test_opening_from_shut_unwinds_the_effect(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        harness.close(to=95.0)
+        harness.controller.lid_shut()
+        frames = self.open_from(harness, 5.0, 100.0)
+        assert frames
+        assert all(frame.opening for frame in frames)
+        # Starts near full strength and only ever eases off from there.
+        assert frames[0].progress > 0.9
+        progress = [frame.progress for frame in frames]
+        assert all(b <= a + 1e-9 for a, b in zip(progress, progress[1:], strict=False))
+        assert harness.controller.phase is not Phase.RUNNING
+
+    def test_each_angle_shows_what_it_showed_on_the_way_down(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        harness.close(to=95.0)
+        harness.controller.lid_shut()
+        frames = self.open_from(harness, 5.0, 100.0, rate=30.0)
+        # 100 open, 60 is 40 degrees closed: 30 past the trigger of a 75 ramp.
+        at_60 = min(frames, key=lambda f: abs(f.current_angle - 60.0))
+        assert at_60.progress == pytest.approx(30.0 / 75.0, abs=0.05)
+
+    def test_opening_from_open_does_nothing(self):
+        harness = Harness(trigger_travel=10.0)
+        assert self.open_from(harness, 100.0, 130.0) == []
+        assert harness.controller.phase is Phase.IDLE
+
+    def test_a_slow_drift_open_does_not_trigger(self):
+        harness = Harness(trigger_travel=10.0)
+        harness.close(to=95.0)
+        harness.controller.lid_shut()
+        assert self.open_from(harness, 5.0, 40.0, rate=2.0) == []
+
+    def test_a_lid_stopping_partway_open_ends_the_effect(self):
+        harness = Harness(trigger_travel=10.0)
+        harness.close(to=95.0)
+        harness.controller.lid_shut()
+        self.open_from(harness, 5.0, 50.0)
+        assert harness.controller.phase is Phase.RUNNING
+        # The estimator re-zeros neutral at 50, so opening travel collapses.
+        harness.now += 1.0
+        controller = harness.controller
+        controller.observe(
+            AngleSample(
+                travel=0.0, velocity=0.0, confidence=0.9,
+                timestamp=harness.now, at_rest=True, absolute_angle=50.0,
+            ),
+            harness.now,
+        )
+        controller.step(harness.now)
+        assert controller.phase is Phase.CLOSING_OUT
+
+    def test_a_second_close_from_partway_keeps_the_open_angle(self):
+        # Closing from 100 to 60, resting, then on to shut: the lid was open at
+        # 100, not at 60, so opening unwinds all the way to 100.
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        harness.close(to=40.0)
+        harness.controller._neutral_angle = 60.0
+        harness.controller.phase = Phase.IDLE
+        harness.controller._begin(harness.now)
+        assert harness.controller._open_angle == 100.0
+
+
 class TestEaseOut:
     def test_the_return_eases_in_and_out_over_the_set_time(self):
         # The spring snapped back in about 0.3 s and looked abrupt. The return

@@ -10,6 +10,10 @@ angle below the threshold stays below it forever. Here, a lid that stops becomes
 the new neutral, travel collapses to zero on its own, and the effect eases back
 to flat without anything having to notice. The timeout, its reference angle, its
 still-duration, and its awaiting-release flag are all gone.
+
+Opening runs the same effect backwards. A lid opened from below where the last
+close started shows the effect at the strength that angle had on the way down,
+and it unwinds as the lid rises back to that open angle.
 """
 
 from __future__ import annotations
@@ -63,6 +67,14 @@ TRIGGER_SPEED = 4.0
 #: close that pauses for a moment mid-travel should not have to re-earn it.
 CLOSING_MEMORY = 1.2
 
+#: How far past neutral the lid has to open before the effect runs backwards,
+#: in degrees. Enough to step over accelerometer noise on a resting lid.
+OPENING_TRAVEL = 3.0
+
+#: An opening run ends when the lid comes to rest, which re-zeros neutral and
+#: collapses the opening travel under this. The estimator's settle tolerance.
+OPENING_RELEASE = 1.5
+
 #: Below this the estimate is too noisy to extrapolate usefully.
 PREDICTION_SPEED_FLOOR = 30.0
 
@@ -111,6 +123,8 @@ class Frame:
     velocity: float = 0.0
     #: True on the frame that finishes the ease back to flat.
     is_final: bool = False
+    #: True while the lid is being opened and the effect is running backwards.
+    opening: bool = False
 
 
 class EffectController:
@@ -132,8 +146,14 @@ class EffectController:
         self._velocity = 0.0
         self._confidence = 0.0
         self._neutral_angle = DEFAULT_NEUTRAL_ANGLE
+        self._angle = DEFAULT_NEUTRAL_ANGLE
+        # Where the lid stood open before the last close. Opening unwinds the
+        # effect toward this angle.
+        self._open_angle = DEFAULT_NEUTRAL_ANGLE
+        self._opening = False
         self._sample_time = 0.0
         self._last_closing = -1e9
+        self._last_opening = -1e9
         self._started_at = 0.0
         self._closing_out_since = 0.0
         self._closing_out_from = 0.0
@@ -159,6 +179,7 @@ class EffectController:
         self._raw_travel = 0.0
         self._velocity = 0.0
         self._last_closing = -1e9
+        self._last_opening = -1e9
         self._travel.reset(0.0)
 
     @property
@@ -178,6 +199,12 @@ class EffectController:
     @property
     def travel(self) -> float:
         return self._raw_travel
+
+    @property
+    def opening(self) -> bool:
+        """The lid is rising from somewhere the effect would show, so a run
+        backwards may be about to start."""
+        return self._velocity < -1.0 and self._reopen_travel() > self.settings.trigger_travel
 
     # --- Input -----------------------------------------------------------
 
@@ -202,8 +229,14 @@ class EffectController:
         # stretched up the screen before easing back to flat.
         if sample.absolute_angle > 0 and self.phase is Phase.IDLE:
             self._neutral_angle = sample.absolute_angle + sample.travel
+        if sample.absolute_angle > 0:
+            self._angle = sample.absolute_angle
+        else:
+            self._angle = self._neutral_angle - sample.travel
         if sample.velocity >= TRIGGER_SPEED:
             self._last_closing = now
+        elif sample.velocity <= -TRIGGER_SPEED:
+            self._last_opening = now
 
     def lid_shut(self) -> None:
         """The operating system reported the lid closed. The display is going off."""
@@ -225,6 +258,32 @@ class EffectController:
         staleness = min(max(now - self._sample_time, 0.0), 0.12)
         return self._raw_travel + self._velocity * (staleness + PREDICTION_LATENCY)
 
+    def _reopen_travel(self) -> float:
+        """How far closed the lid is from where it stood open before the last
+        close. Opening drives the effect with this, so each angle on the way up
+        shows what it showed on the way down."""
+        return self._open_angle - self._angle
+
+    def _target_travel(self) -> float:
+        travel = self._reopen_travel() if self._opening else self._raw_travel
+        return max(travel, 0.0)
+
+    def _wants_closing(self, now: float) -> bool:
+        # A lid resting below the threshold must not start the effect by itself,
+        # so a recent downward movement is required as well as the position.
+        closing_recently = now - self._last_closing < CLOSING_MEMORY
+        return closing_recently and self._predicted_travel(now) >= self.settings.trigger_travel
+
+    def _wants_opening(self, now: float) -> bool:
+        # The same rule mirrored: a deliberate upward movement, from an angle
+        # where the effect would be showing on the way down.
+        opening_recently = now - self._last_opening < CLOSING_MEMORY
+        return (
+            opening_recently
+            and -self._raw_travel >= OPENING_TRAVEL
+            and self._reopen_travel() >= self.settings.trigger_travel
+        )
+
     def _wants_effect(self, now: float) -> bool:
         settings = self.settings
         if not settings.enabled or self._suspended:
@@ -235,15 +294,17 @@ class EffectController:
         if self.phase is Phase.RUNNING:
             if now - self._started_at <= MINIMUM_DURATION:
                 return True
+            release = settings.trigger_travel - settings.release_hysteresis
+            if self._opening:
+                # Released once the lid is back up past the threshold, or once
+                # it stops partway, which re-zeros neutral under it.
+                return -self._raw_travel > OPENING_RELEASE and self._reopen_travel() > release
             # Released on the way back up, with hysteresis so a lid hovering on
             # the threshold does not flicker. Travel collapsing to zero because
             # the lid came to rest goes through this same door.
-            return self._raw_travel > settings.trigger_travel - settings.release_hysteresis
+            return self._raw_travel > release
 
-        # A lid resting below the threshold must not start the effect by itself,
-        # so a recent downward movement is required as well as the position.
-        closing_recently = now - self._last_closing < CLOSING_MEMORY
-        return closing_recently and self._predicted_travel(now) >= settings.trigger_travel
+        return self._wants_closing(now) or self._wants_opening(now)
 
     def step(self, now: float | None = None) -> Frame | None:
         """Advance one frame. Returns what to draw, or ``None`` for nothing."""
@@ -253,7 +314,7 @@ class EffectController:
         wanted = self._wants_effect(now)
 
         if self.phase is Phase.IDLE and wanted:
-            self._begin(now)
+            self._begin(now, opening=not self._wants_closing(now))
         elif self.phase is Phase.RUNNING and not wanted:
             self._begin_closing_out(now)
 
@@ -261,7 +322,7 @@ class EffectController:
             return None
 
         if self.phase is not Phase.CLOSING_OUT:
-            self._travel.advance(max(self._raw_travel, 0.0), dt)
+            self._travel.advance(self._target_travel(), dt)
             return self._frame(self._travel.value)
 
         elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION
@@ -315,12 +376,14 @@ class EffectController:
             held_travel = settings.trigger_travel + tilt_knee(
                 min(past_trigger, span), settings.tilt_limit
             )
+        reference = self._open_angle if self._opening else self._neutral_angle
         return Frame(
-            start_angle=self._neutral_angle - settings.trigger_travel,
-            current_angle=self._neutral_angle - held_travel,
+            start_angle=reference - settings.trigger_travel,
+            current_angle=reference - held_travel,
             progress=progress,
             velocity=self._velocity,
             is_final=is_final,
+            opening=self._opening,
         )
 
     def corners(self, frame: Frame, screen_size: tuple[float, float]):
@@ -346,15 +409,22 @@ class EffectController:
 
     # --- Transitions -----------------------------------------------------
 
-    def _begin(self, now: float) -> None:
+    def _begin(self, now: float, opening: bool = False) -> None:
         self.phase = Phase.RUNNING
         self._started_at = now
+        self._opening = opening
+        # A close starting from a lid that rests where the effect would already
+        # show is the second half of an earlier close, not a fresh one from
+        # open, so the open angle stays where that earlier close left it.
+        if not opening and self._open_angle - self._neutral_angle < self.settings.trigger_travel:
+            self._open_angle = self._neutral_angle
         # Start from where the lid actually is, so the picture does not sweep in
         # from flat after a fast close has already passed the threshold.
-        self._travel.reset(max(self._raw_travel, 0.0))
+        self._travel.reset(self._target_travel())
         log.info(
-            "effect on: travel %.1f deg, predicted %.1f, %.0f deg/s, confidence %.2f",
-            self._raw_travel,
+            "effect on%s: travel %.1f deg, predicted %.1f, %.0f deg/s, confidence %.2f",
+            " (opening)" if opening else "",
+            self._target_travel(),
             self._predicted_travel(now),
             self._velocity,
             self._confidence,
@@ -371,6 +441,7 @@ class EffectController:
         self.phase = Phase.IDLE
         self._travel.reset(0.0)
         self._last_closing = -1e9
+        self._last_opening = -1e9
 
     def _delta(self, now: float) -> float:
         last, self._last_frame_time = self._last_frame_time, now

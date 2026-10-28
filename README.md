@@ -1,6 +1,6 @@
 # WinDuo2
 
-Close your laptop lid and the screen leans away, blurring and dimming as it goes, the way an iPhone Duo does as it folds shut.
+Close your laptop lid and the screen leans away, blurring and dimming as it goes, the way an iPhone Duo does as it folds shut. Open it again and the screen stands back up out of the blur.
 
 WinDuo2 reads the laptop's own sensors: a hinge angle sensor where Windows exposes one, otherwise the accelerometer in the lid that convertibles such as the Galaxy Book Pro 360 use for screen rotation. No camera, no calibration.
 
@@ -24,6 +24,8 @@ To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 
 ## How it follows the lid
 
 The effect is continuous, not a one-shot animation. It fades in once you have closed about 10°, grows as you keep closing, reaches full strength at about 85°, and holds there for the rest of the way down. Open back up and it reverses. Both thresholds are adjustable.
+
+Opening plays the same effect backwards. Lift the lid from shut, or from anywhere below where your last close started, and the screen shows the effect at the strength that angle had on the way down, then straightens up and clears as the lid rises back to where it was open. A lid already open that you tilt further back leaves the screen alone.
 
 The picture behaves like a sheet hinged at the bottom of the screen that leans back as the lid closes, so its top edge comes down and narrows. By default it leans back at 0.8° per degree of closing, and the tilt levels off at about 55° past the trigger instead of stretching the picture into a smear as the lid nears flat. *Lean back* and *Tilt limit* in the settings adjust both.
 

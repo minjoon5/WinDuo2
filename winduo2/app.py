@@ -292,8 +292,9 @@ class Engine(QObject):
         the effect is supposed to follow.
 
         So the capture starts as soon as the lid is moving downward at all, well
-        before the trigger, and lingers briefly afterwards in case the lid is
-        about to move again. A lid sitting still keeps nothing running.
+        before the trigger, or upward from somewhere the effect would run
+        backwards, and lingers briefly afterwards in case the lid is about to
+        move again. A lid sitting still keeps nothing running.
         """
         settings = self.store.settings
         if not settings.enabled:
@@ -301,7 +302,7 @@ class Engine(QObject):
             return
 
         travel = self.controller.travel
-        approaching = travel > settings.trigger_travel * 0.35
+        approaching = travel > settings.trigger_travel * 0.35 or self.controller.opening
         if approaching:
             self._prewarm_until = now + self.PREWARM_LINGER
 
