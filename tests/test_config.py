@@ -89,3 +89,11 @@ class TestSaving:
         store.update(has_seen_intro=True, recession=2.0)
         store.reset_settings()
         assert Store(config_path=path).settings.has_seen_intro
+
+    def test_starts_with_windows_unless_turned_off(self, tmp_path):
+        from winduo2.config import Store
+
+        path = tmp_path / "config.json"
+        assert Store(config_path=path).settings.launch_at_login
+        Store(config_path=path).update(launch_at_login=False)
+        assert not Store(config_path=path).settings.launch_at_login

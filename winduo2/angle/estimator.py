@@ -70,6 +70,15 @@ class TravelEstimator:
     #: And falls at least this fast, so one bad reading does stop it.
     _CONFIDENCE_FALL = 12.0
 
+    #: How far back the rest test looks to judge how fast the lid last moved,
+    #: in seconds.
+    _PACE_LOOKBACK = 2.0
+    #: The longest the rest test will wait for a slow lid to show it is still
+    #: moving, in seconds. Sets the slowest movement that is not taken for
+    #: rest: three times the settle tolerance over this, 1.5 degrees per second
+    #: at the default 1.5.
+    _MAX_SETTLE = 3.0
+
     def __init__(
         self,
         settle_seconds: float = 0.4,
@@ -206,12 +215,24 @@ class TravelEstimator:
         on a Galaxy Book Pro 360: closing at 15 degrees per second and pausing
         to look re-zeroed within 0.4 s, so the effect switched off moments after
         it switched on.
+
+        The window is not always ``settle_seconds`` long. A lid moving slowly
+        enough covers less than the tolerance in that time, and a hinge sensor
+        reporting whole degrees may not change at all, so it read as resting
+        and neutral crept along behind it: a lid folded slowly never got the
+        effect. So the window stretches to fit how fast the lid last moved,
+        long enough for a lid still moving at that pace to cover three times
+        the tolerance, up to ``_MAX_SETTLE``. Three rather than two because a
+        sensor reporting whole degrees makes the pace read up to twice as fast
+        as it is. A quick close that stops is still
+        judged over ``settle_seconds``.
         """
         window = self._rest_window
         window.append((now, angle))
-        horizon = now - self.settle_seconds
-        while len(window) > 2 and window[0][0] < horizon:
+        while len(window) > 2 and window[0][0] < now - self._MAX_SETTLE:
             window.popleft()
+        settle = self._settle_time(now)
+        horizon = now - settle
 
         if self._confidence < 0.2:
             window.clear()
@@ -220,20 +241,21 @@ class TravelEstimator:
             self._still_since = None
             return
 
-        spans_the_window = now - window[0][0] >= self.settle_seconds * 0.9
-        if len(window) < 3 or not spans_the_window:
+        recent = [(t, value) for t, value in window if t >= horizon]
+        spans_the_window = now - window[0][0] >= settle * 0.9
+        if len(recent) < 3 or not spans_the_window:
             self._at_rest = False
             self._still_since = None
             return
 
-        values = [value for _, value in window]
+        values = [value for _, value in recent]
         if max(values) - min(values) > self.settle_tolerance:
             self._at_rest = False
             self._still_since = None
             return
 
         if self._still_since is None:
-            self._still_since = window[0][0]
+            self._still_since = recent[0][0]
         # Averaging the window rather than taking the newest reading keeps the
         # zero from inheriting one reading's worth of noise.
         centre = sum(values) / len(values)
@@ -245,6 +267,30 @@ class TravelEstimator:
             log.debug("neutral re-zeroed at %.1f deg", centre)
         self._at_rest = True
         self._neutral = centre
+
+    def _settle_time(self, now: float) -> float:
+        """How long the rest window should be, from the pace of the lid's last
+        movement: its range over the lookback, over the time it took to cross
+        it, from the last reading at one end to the first at the other. Jitter
+        and a lid that has not moved beyond the tolerance leave it at
+        ``settle_seconds``."""
+        lookback = [(t, a) for t, a in self._rest_window if t >= now - self._PACE_LOOKBACK]
+        if len(lookback) < 2:
+            return self.settle_seconds
+        low = min(a for _, a in lookback)
+        high = max(a for _, a in lookback)
+        moved = high - low
+        if moved <= self.settle_tolerance:
+            return self.settle_seconds
+        last_low = max(t for t, a in lookback if a == low)
+        last_high = max(t for t, a in lookback if a == high)
+        # The end the lid left first is where the movement started.
+        start, end = (low, high) if last_low < last_high else (high, low)
+        left = max(t for t, a in lookback if a == start)
+        arrived = min(t for t, a in lookback if a == end and t >= left)
+        pace = moved / max(arrived - left, 1e-3)
+        stretch = 3.0 * self.settle_tolerance / pace
+        return min(max(stretch, self.settle_seconds), self._MAX_SETTLE)
 
     def _velocity(self, angle: float, now: float) -> float:
         """Least-squares closing speed over a short window, in degrees per second.

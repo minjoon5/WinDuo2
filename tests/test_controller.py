@@ -507,10 +507,18 @@ class TestOpening:
         harness = Harness(trigger_travel=10.0)
         assert self.open_from(harness, 100.0, 106.0) == []
 
-    def test_a_slow_drift_open_does_not_trigger(self):
+    def test_a_slow_open_still_triggers(self):
+        # Two degrees per second. Whether that is movement or rest is the
+        # estimator's call; once it says moving, speed does not matter.
         harness = Harness(trigger_travel=10.0)
         self.shut(harness)
-        assert self.open_from(harness, 5.0, 40.0, rate=2.0) == []
+        frames = self.open_from(harness, 5.0, 40.0, rate=2.0)
+        assert frames and frames[-1].progress > 0.2
+
+    def test_a_slow_close_still_triggers(self):
+        harness = Harness(trigger_travel=10.0)
+        harness.close(to=30.0, rate=2.0)
+        assert harness.controller.phase is Phase.RUNNING
 
 
 class TestEaseOut:

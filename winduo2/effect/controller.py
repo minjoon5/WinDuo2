@@ -60,10 +60,6 @@ class Phase(Enum):
     CLOSING_OUT = auto()
 
 
-#: Closing speed that counts as deliberate, in degrees per second. A hand
-#: resting on a lid reads under 1.
-TRIGGER_SPEED = 4.0
-
 #: How long after the lid last moved downward the effect may still start. A
 #: close that pauses for a moment mid-travel should not have to re-earn it.
 CLOSING_MEMORY = 1.2
@@ -212,10 +208,14 @@ class EffectController:
         # stretched up the screen before easing back to flat.
         if sample.absolute_angle > 0 and self.phase is Phase.IDLE:
             self._neutral_angle = sample.absolute_angle + sample.travel
-        if sample.velocity >= TRIGGER_SPEED:
-            self._last_closing = now
-        elif sample.velocity <= -TRIGGER_SPEED:
-            self._last_opening = now
+        # Moving is the estimator's call, not a speed threshold here. A speed
+        # threshold left a lid folded slowly with no effect at all, and a hand
+        # resting on a lid never builds travel anyway: neutral follows it.
+        if not sample.at_rest:
+            if sample.travel > 0.0:
+                self._last_closing = now
+            elif sample.travel < 0.0:
+                self._last_opening = now
 
     def lid_shut(self) -> None:
         """The operating system reported the lid closed. The display is going off."""

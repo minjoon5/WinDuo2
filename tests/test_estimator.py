@@ -73,12 +73,41 @@ class TestNeutral:
         assert not sample.at_rest
 
     def test_motion_slower_than_the_rest_threshold_counts_as_rest(self):
-        # A settling hinge is not a lid close.
+        # A settling hinge is not a lid close. Half a degree per second, under
+        # the 1 degree per second the longest rest window can tell from rest.
         driver = Driver(settle_seconds=0.4, settle_tolerance=1.5)
         driver.settle()
-        sample = driver.feed([0.02] * 400)
+        sample = driver.feed([0.5 / 60] * 400)
         assert sample.at_rest
         assert abs(sample.travel) < 1.5
+
+    @pytest.mark.parametrize("speed", [1.5, 2.0, 3.0])
+    def test_a_lid_folded_slowly_keeps_its_travel(self, speed):
+        # Slower than the 0.4 s window can see, which used to read as rest and
+        # drag neutral along behind the lid.
+        driver = Driver(settle_seconds=0.4, settle_tolerance=1.5)
+        driver.settle()
+        sample = driver.feed([speed / 60] * int(20 / speed * 60))
+        # Less what it moved before it was clear it was moving at all, which
+        # is at most about the tolerance.
+        assert 20.0 - 2.0 < sample.travel <= 20.0 + 1e-6
+        assert not sample.at_rest
+
+    def test_whole_degree_readings_folded_slowly_keep_their_travel(self):
+        # A hinge sensor that reports whole degrees, folded at 2 degrees per
+        # second: one step every half second, flat in between.
+        driver = Driver(settle_seconds=0.4, settle_tolerance=1.5)
+        driver.settle()
+        for _ in range(20):
+            sample = driver.feed([1.0] + [0.0] * 29)
+        assert 20.0 - 2.0 < sample.travel <= 20.0 + 1e-6
+        assert not sample.at_rest
+
+    def test_a_slow_fold_that_stops_still_comes_to_rest(self):
+        driver = Driver(settle_seconds=0.4, settle_tolerance=1.5)
+        driver.settle()
+        driver.feed([2.0 / 60] * 300)
+        assert driver.feed([0.0] * int(3.5 * 60)).at_rest
 
     def test_noise_inside_the_tolerance_does_not_break_rest(self):
         driver = Driver(settle_seconds=0.4, settle_tolerance=1.5)

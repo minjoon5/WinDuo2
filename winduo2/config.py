@@ -122,7 +122,9 @@ class Settings:
     render_width_cap: int = 2000
 
     # --- Housekeeping ----------------------------------------------------
-    launch_at_login: bool = False
+    #: On from the start: the effect is only any use if WinDuo2 is already
+    #: running when the lid moves.
+    launch_at_login: bool = True
     #: Draw the live travel reading in the tray tooltip.
     show_reading: bool = True
     #: The first-run introduction has been shown.
