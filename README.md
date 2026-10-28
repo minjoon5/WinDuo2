@@ -2,6 +2,10 @@
 
 Close your laptop lid and the screen leans away, blurring and dimming as it goes, the way an iPhone Duo does as it folds shut. Open it again and the screen stands back up out of the blur.
 
+| Lid open | Closing |
+| :---: | :---: |
+| <img src="docs/images/open.jpg" alt="Galaxy Book with the lid open and the desktop shown normally" width="360"> | <img src="docs/images/closing.jpg" alt="The same laptop partway closed, the desktop leaning back, blurred and dimmed" width="360"> |
+
 WinDuo2 reads the laptop's own hinge angle sensor: the one Windows exposes as standard, or the Intel Integrated Sensor Hub's hinge sensor on convertibles such as the Galaxy Book 360 series. No camera, no calibration.
 
 Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE.md)
