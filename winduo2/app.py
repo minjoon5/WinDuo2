@@ -400,7 +400,9 @@ class Engine(QObject):
         # attributes here, and the timer re-reads them next tick. Emitting the
         # signal is also thread safe; Qt queues it onto whatever thread each
         # connected slot actually lives on.
-        if not is_open:
+        if is_open:
+            self.controller.lid_opened()
+        else:
             self.controller.lid_shut()
         self.lid_state_changed.emit(is_open)
 
