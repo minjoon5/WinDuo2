@@ -227,6 +227,63 @@ class TestProfile:
             assert all(0.0 < scale <= 1.0 + 1e-9 for _, scale in profile.table)
 
 
+class TestExpandedProfile:
+    """Opening: the closing projection inverted, the top spreading up and out."""
+
+    SIZE = (1600.0, 1000.0)
+
+    @staticmethod
+    def _geometry():
+        from winduo2.effect.geometry import DepthGeometry
+
+        return DepthGeometry()
+
+    def _profile(self, current, expand, start=100.0):
+        return self._geometry().profile(start, current, 3.0, 1.0, self.SIZE, expand=expand)
+
+    def test_it_undoes_the_closing_projection(self):
+        closing = self._profile(60.0, expand=False)
+        opening = self._profile(60.0, expand=True)
+        # Where closing draws a picture point is where opening samples it.
+        for x in (0.0, 400.0, 800.0, 1500.0):
+            for y in (0.0, 250.0, 600.0, 999.0):
+                px, py = opening.picture_point(x, y)
+                bx, by = closing.picture_point(px, py)
+                assert bx == pytest.approx(x, abs=0.5)
+                assert by == pytest.approx(y, abs=0.5)
+
+    def test_the_top_spreads_past_both_sides_and_above_the_screen(self):
+        width, height = self.SIZE
+        corners = self._geometry().corners(100.0, 60.0, 3.0, 1.0, self.SIZE, expand=True)
+        assert corners[0] == pytest.approx((0.0, 0.0))
+        assert corners[1] == pytest.approx((width, 0.0))
+        (right, top), (left, top_left) = corners[2], corners[3]
+        assert top == top_left and top > height
+        assert left < 0.0 and right > width
+        assert left + right == pytest.approx(width)
+
+    def test_every_screen_row_lands_on_the_picture(self):
+        width, height = self.SIZE
+        profile = self._profile(40.0, expand=True)
+        assert profile.end == height
+        for x in (0.0, width / 2, width - 1):
+            for y in (0.0, height / 2, height - 1):
+                px, py = profile.picture_point(x, y)
+                assert 0.0 <= px <= width and 0.0 <= py <= height
+
+    def test_no_travel_is_the_identity(self):
+        profile = self._profile(100.0, expand=True)
+        for x, y in ((0.0, 0.0), (800.0, 500.0), (1600.0, 999.0)):
+            assert profile.picture_point(x, y) == pytest.approx((x, y), abs=0.05)
+
+    def test_rows_are_monotonic_and_scales_widen(self):
+        for current in (95.0, 70.0, 40.0, 15.0):
+            table = self._profile(current, expand=True).table
+            rows = [row for row, _ in table]
+            assert all(b >= a for a, b in zip(rows, rows[1:], strict=False))
+            assert all(1.0 - 1e-9 <= scale < math.inf for _, scale in table)
+
+
 class TestTiltKnee:
     def test_tracks_the_lid_at_first(self):
         from winduo2.effect.controller import tilt_knee

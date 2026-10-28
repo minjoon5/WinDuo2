@@ -521,6 +521,15 @@ class TestOpening:
         harness.controller.lid_shut()
         assert harness.controller.phase is Phase.IDLE
 
+    def test_opening_spreads_the_picture_instead_of_leaning_it_back(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        self.shut(harness)
+        harness.controller.lid_opened(harness.now)
+        frames = self.open_from(harness, 5.0, 40.0)
+        size = (1920.0, 1080.0)
+        corners = harness.controller.corners(frames[0], size)
+        assert corners[2][1] > size[1] and corners[2][0] > size[0]
+
     def test_each_angle_shows_what_it_showed_on_the_way_down(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         self.dropped(harness)

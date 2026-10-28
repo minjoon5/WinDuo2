@@ -460,6 +460,7 @@ class EffectController:
             viewing_distance_ratio=self.settings.viewing_distance,
             recession=self.settings.recession,
             screen_size=screen_size,
+            expand=frame.opening,
         )
 
     def profile(self, frame: Frame, screen_size: tuple[float, float]):
@@ -470,6 +471,7 @@ class EffectController:
             viewing_distance_ratio=self.settings.viewing_distance,
             recession=self.settings.recession,
             screen_size=screen_size,
+            expand=frame.opening,
         )
 
     # --- Transitions -----------------------------------------------------

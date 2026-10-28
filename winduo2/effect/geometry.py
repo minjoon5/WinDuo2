@@ -12,6 +12,11 @@ It used to stay put in the room instead, while the glass turned toward it. That
 carried the projected top edge *up* past the top of the screen faster than the
 lean brought it down, so the picture only narrowed at the top and never visibly
 dropped. Measured from the glass, the top edge comes down as the sheet leans.
+
+Opening uses the same projection inverted (``expand``). Where closing draws the
+screen as a trapezoid narrowing toward a lowered top edge, opening draws it as
+the reverse: the top edge spreads past both sides and up past the top of the
+screen, with the bottom edge held on the hinge.
 """
 
 from __future__ import annotations
@@ -43,6 +48,11 @@ class DepthGeometry:
     # eye ends up behind the glass.
     min_depth_fraction: float = 0.1
 
+    # How far above the screen, in screen heights, an expanded top edge may be
+    # reported. Only ``corners`` needs it; the profile never looks past the
+    # top of the screen.
+    max_expand: float = 10.0
+
     def _eye(self, viewing_distance_ratio: float, height: float) -> tuple[float, float]:
         """The eye measured along the glass from the hinge, and away from it."""
         depth = max(height * viewing_distance_ratio, height * self.min_depth_fraction)
@@ -55,6 +65,7 @@ class DepthGeometry:
         viewing_distance_ratio: float,
         recession: float,
         screen_size: tuple[float, float],
+        expand: bool = False,
     ) -> list[tuple[float, float]]:
         """Corner positions in screen points, y up, origin bottom-left.
 
@@ -62,7 +73,8 @@ class DepthGeometry:
 
         ``start_angle`` is the lid angle at which the effect began, so travel is
         measured from there. ``recession`` is degrees the picture turns away
-        from the glass per degree the lid closes.
+        from the glass per degree the lid closes. ``expand`` inverts the
+        projection, for opening.
         """
         width, height = float(screen_size[0]), float(screen_size[1])
         if width <= 0 or height <= 0:
@@ -75,6 +87,23 @@ class DepthGeometry:
         half = width / 2
         sin_sep = math.sin(separation)
         cos_sep = math.cos(separation)
+
+        if expand:
+            # The screen row the closing projection would carry up to the top
+            # edge is where the top edge lands: solving that projection for
+            # the row that reaches ``height``. Capped so a lean steep enough
+            # to put the top at infinity still returns something drawable.
+            denominator = depth * cos_sep - (height - along) * sin_sep
+            reach = depth / denominator if denominator > 0 else math.inf
+            reach = min(reach, self.max_expand)
+            scale = depth / (depth + reach * height * sin_sep)
+            top = reach * height
+            return [
+                (0.0, 0.0),
+                (width, 0.0),
+                (half + half / scale, top),
+                (half - half / scale, top),
+            ]
 
         def project(x: float, y: float) -> tuple[float, float]:
             scale = depth / (depth + y * sin_sep)
@@ -98,6 +127,7 @@ class DepthGeometry:
         recession: float,
         screen_size: tuple[float, float],
         samples: int = PROFILE_SAMPLES,
+        expand: bool = False,
     ) -> Profile:
         """The flat-sheet projection, as a per-row lookup the shader can invert.
 
@@ -113,6 +143,11 @@ class DepthGeometry:
         that row. Rows above ``end`` continue the last entry at ``slope``
         picture rows per screen row, which is what lets the blur reach into the
         black margin past the top edge.
+
+        ``expand`` swaps the two sides of the projection, for opening: screen
+        row ``y`` samples the picture where closing would have drawn picture
+        row ``y``, at the reciprocal scale. The table then spans the whole
+        screen, and every row of it lands inside the picture.
         """
         width, height = float(screen_size[0]), float(screen_size[1])
         if width <= 0 or height <= 0:
@@ -140,6 +175,9 @@ class DepthGeometry:
             rows.append(max(along + (u - along) * scale, rows[-1]))
             scales.append(scale)
 
+        if expand:
+            return _inverted(arc, rows, scales, width, height, samples, ds)
+
         end = rows[-1]
         if end <= 0.0:
             raise ValueError("the sheet projects to nothing")
@@ -164,6 +202,21 @@ class DepthGeometry:
         slope = (arc[-1] - arc[-2]) / last if last > 1e-12 else 0.0
         return Profile(table=table, end=end, slope=slope, width=width, height=height)
 
+
+def _inverted(arc, rows, scales, width, height, samples, ds) -> Profile:
+    """The closing walk read the other way round. ``arc`` is uniform, so screen
+    rows index straight into it."""
+    steps = len(arc) - 1
+    table: list[tuple[float, float]] = []
+    for i in range(samples):
+        position = i / (samples - 1) * steps
+        j = min(int(position), steps - 1)
+        t = position - j
+        row = rows[j] + (rows[j + 1] - rows[j]) * t
+        scale = scales[j] + (scales[j + 1] - scales[j]) * t
+        table.append((row / height, 1.0 / max(scale, 1e-6)))
+    slope = (rows[-1] - rows[-2]) / height / ds
+    return Profile(table=table, end=height, slope=slope, width=width, height=height)
 
 
 @dataclass
