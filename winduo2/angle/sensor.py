@@ -1,24 +1,23 @@
 """The laptop's own sensors, on a background thread, feeding the estimator.
 
-Two kinds of sensor can report the lid, tried in this order:
+On Windows the lid is read from a hinge angle sensor, which reports the angle
+between lid and base directly, tried in this order:
 
-- A **hinge angle sensor**, which reports the angle between lid and base
-  directly. Windows exposes it as ``HingeAngleSensor`` on machines whose
-  firmware publishes one.
-- The **lid accelerometer**, which every convertible carries for screen
-  rotation. It reports gravity in the screen's own axes, and the screen's tilt
-  against gravity is the lid angle whenever the base is level. When the base is
-  not level, the tilt still changes one for one with the hinge, and the
-  estimator only ever acts on change.
+- Windows' own ``HingeAngleSensor``, on machines whose firmware publishes one.
+- The **Intel ISH hinge sensor**, a custom sensor (HID usage 0x020B) that
+  Galaxy Book 360 models expose instead. Its firmware works the angle out from
+  the accelerometers in both lid and base, so it is the true hinge angle
+  whatever the base is resting on.
 
-  Many convertibles carry a second accelerometer in the base, and Windows may
-  offer that one as the default. It barely moves as the lid closes, so when
-  there is more than one, all of them are read and the lid is taken from the
-  one that turns with it.
+On Linux the lid is read from the **lid accelerometer**, which every
+convertible carries for screen rotation. It reports gravity in the screen's own
+axes, and the screen's tilt against gravity is the lid angle whenever the base
+is level. When the base is not level, the tilt still changes one for one with
+the hinge, and the estimator only ever acts on change.
 
-Windows axes: x to the right of the screen, y up the screen, z out of the glass
-toward the viewer, in g. An upright screen reads (0, -1, 0) and a screen lying
-face up reads (0, 0, -1).
+Accelerometer axes, as Windows defines them: x to the right of the screen, y up
+the screen, z out of the glass toward the viewer, in g. An upright screen reads
+(0, -1, 0) and a screen lying face up reads (0, 0, -1).
 """
 
 from __future__ import annotations
@@ -28,8 +27,7 @@ import math
 import sys
 import threading
 import time
-from collections import deque
-from collections.abc import Callable
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -41,7 +39,6 @@ from winduo2.log import get_logger
 log = get_logger("sensor")
 
 __all__ = [
-    "AccelerometerChooser",
     "LidSensor",
     "SensorAngleSource",
     "SensorStatus",
@@ -164,173 +161,100 @@ async def _wait(operation):
     return await operation
 
 
-class _WindowsAccelerometer:
-    name = "lid accelerometer"
+class _WindowsCustomHinge:
+    """The hinge sensor Intel's Integrated Sensor Hub publishes as a custom sensor.
+
+    The angle is the first custom value of each reading. The rest carry a
+    second angle, both accelerometer vectors and a posture mode, none of which
+    this needs.
+    """
+
+    name = "Intel ISH hinge sensor"
+
+    #: The custom sensor type, from HID usage 0x020B.
+    TYPE = uuid.UUID("0000020b-766d-4333-8262-27e82dd158b1")
+    #: ``SENSOR_DATA_TYPE_CUSTOM_VALUE1``: the property set and its pid.
+    ANGLE_KEY = "{C458F8A7-4AE8-4777-9607-2E9BDD65110A} 161"
 
     def __init__(self, sensor) -> None:
         self._sensor = sensor
+        self._key: str | None = None
 
     @classmethod
-    def open(cls) -> LidSensor | None:
-        _enter_winrt()
-        sensors = _windows_accelerometers()
-        if not sensors:
-            return None
-        for sensor in sensors:
-            try:
-                sensor.report_interval = max(
-                    int(sensor.minimum_report_interval), 1000 // POLL_RATE
-                )
-            except OSError:
-                log.info("accelerometer kept its own report interval")
-        if len(sensors) == 1:
-            return cls(sensors[0])
-        log.info("found %d accelerometers, choosing the one in the lid", len(sensors))
-        return AccelerometerChooser([cls(sensor) for sensor in sensors])
-
-    def read(self) -> tuple[float, float] | None:
-        reading = self._sensor.get_current_reading()
-        if reading is None:
-            return None
-        angle, confidence = lid_angle_from_gravity(
-            reading.acceleration_x, reading.acceleration_y, reading.acceleration_z
-        )
-        return angle, confidence if angle <= MAX_LID_ANGLE else 0.0
-
-    def close(self) -> None:
-        self._sensor = None
-
-
-def _windows_accelerometers() -> list:
-    """Every accelerometer Windows offers, the default first."""
-    from winrt.windows.devices.sensors import Accelerometer, AccelerometerReadingType
-
-    found = []
-    seen: set[str] = set()
-    try:
-        default = Accelerometer.get_default()
-    except OSError:
-        default = None
-    if default is not None:
-        found.append(default)
-        seen.add(str(default.device_id))
-
-    # Listing the rest needs the enumeration projection. Without it, or if
-    # listing fails, the default alone is still worth reading.
-    try:
+    def open(cls) -> _WindowsCustomHinge | None:
         import asyncio
 
+        _enter_winrt()
         from winrt.windows.devices.enumeration import DeviceInformation
+        from winrt.windows.devices.sensors.custom import CustomSensor
 
-        selector = Accelerometer.get_device_selector(AccelerometerReadingType.STANDARD)
+        selector = CustomSensor.get_device_selector(cls.TYPE)
         loop = asyncio.new_event_loop()
         try:
             devices = loop.run_until_complete(
                 _wait(DeviceInformation.find_all_async_aqs_filter(selector))
             )
-            for device in devices:
-                if str(device.id) in seen:
-                    continue
-                sensor = loop.run_until_complete(_wait(Accelerometer.from_id_async(device.id)))
-                if sensor is not None:
-                    found.append(sensor)
-                    seen.add(str(device.id))
+            if devices is None or len(devices) == 0:
+                return None
+            sensor = loop.run_until_complete(_wait(CustomSensor.from_id_async(devices[0].id)))
+        except OSError:
+            sensor = None
         finally:
             loop.close()
-    except Exception:
-        log.info("could not list the other accelerometers", exc_info=True)
-    return found
-
-
-class AccelerometerChooser:
-    """Several accelerometers read together, reporting the one in the lid.
-
-    Before anything moves, the most upright one is the best guess: a lid in use
-    stands well off the horizontal, while a base on a desk reads flat. Once the
-    lid moves, the sensor that turned with it is the lid's, and the choice
-    follows it. Carrying the laptop turns every sensor alike, so a switch needs
-    one sensor to have swung several times further than the one in use.
-    """
-
-    name = "lid accelerometer"
-
-    #: Seconds of recent readings compared when deciding.
-    WINDOW = 3.0
-    #: Degrees a sensor must swing within the window to be chosen.
-    MIN_SWING = 5.0
-    #: How many times further than the chosen sensor it must have swung.
-    RATIO = 3.0
-
-    def __init__(
-        self, sensors: list[LidSensor], clock: Callable[[], float] = time.monotonic
-    ) -> None:
-        self._sensors = sensors
-        self._clock = clock
-        self._recent: list[deque[tuple[float, float]]] = [deque() for _ in sensors]
-        self._active: int | None = None
-        self._switched = False
-
-    def take_switch(self) -> bool:
-        """Whether the choice changed since the last call. Readings jump when it
-        does, so whatever tracks the angle has to start over."""
-        switched, self._switched = self._switched, False
-        return switched
+        if sensor is None:
+            return None
+        try:
+            sensor.report_interval = max(int(sensor.minimum_report_interval), 1000 // POLL_RATE)
+        except OSError:
+            log.info("hinge sensor kept its own report interval")
+        return cls(sensor)
 
     def read(self) -> tuple[float, float] | None:
-        now = self._clock()
-        readings: list[tuple[float, float] | None] = []
-        for index, sensor in enumerate(self._sensors):
-            try:
-                reading = sensor.read()
-            except Exception:
-                log.debug("accelerometer %d read failed", index, exc_info=True)
-                reading = None
-            readings.append(reading)
-            recent = self._recent[index]
-            if reading is not None:
-                recent.append((now, reading[0]))
-            while recent and now - recent[0][0] > self.WINDOW:
-                recent.popleft()
-
-        if self._active is None:
-            upright = [
-                (abs(math.sin(math.radians(r[0]))) * r[1], index)
-                for index, r in enumerate(readings)
-                if r is not None
-            ]
-            if not upright:
-                return None
-            self._active = max(upright)[1]
-            log.info("reading the lid from accelerometer %d to begin with", self._active)
-
-        swings = [_swing(recent) for recent in self._recent]
-        best = max(range(len(swings)), key=swings.__getitem__)
-        if (
-            best != self._active
-            and swings[best] >= self.MIN_SWING
-            and swings[best] >= self.RATIO * swings[self._active]
-        ):
-            log.info(
-                "accelerometer %d turned %.1f degrees against %.1f, reading the lid from it",
-                best, swings[best], swings[self._active],
+        reading = self._sensor.get_current_reading()
+        if reading is None:
+            return None
+        properties = reading.properties
+        if self._key is None:
+            # Matched without regard to case, as the property store does.
+            self._key = next(
+                (key for key in properties if str(key).upper() == self.ANGLE_KEY), None
             )
-            self._active = best
-            self._switched = True
-        return readings[self._active]
+            if self._key is None:
+                return None
+        value = properties.get(self._key)
+        if value is None:
+            return None
+        angle = _unbox_number(value)
+        if angle is None:
+            return None
+        return angle, 1.0 if 0.0 <= angle <= MAX_LID_ANGLE else 0.0
 
     def close(self) -> None:
-        for sensor in self._sensors:
-            with contextlib.suppress(Exception):
-                sensor.close()
+        self._sensor = None
 
 
-def _swing(recent: deque[tuple[float, float]]) -> float:
-    """How far a sensor's angle ranged over its recent readings, across the seam."""
-    if not recent:
-        return 0.0
-    reference = recent[0][1]
-    offsets = [((angle - reference + 180.0) % 360.0) - 180.0 for _, angle in recent]
-    return max(offsets) - min(offsets)
+def _unbox_number(value) -> float | None:
+    """A boxed WinRT number as a float, whatever numeric type the firmware chose."""
+    if isinstance(value, int | float):
+        return float(value)
+    from winrt import system
+
+    for unbox in (
+        system.unbox_double,
+        system.unbox_single,
+        system.unbox_int32,
+        system.unbox_uint32,
+        system.unbox_int16,
+        system.unbox_uint16,
+        system.unbox_int64,
+        system.unbox_uint64,
+        system.unbox_uint8,
+    ):
+        try:
+            return float(unbox(value))
+        except Exception:
+            continue
+    return None
 
 
 # --- Linux -----------------------------------------------------------------
@@ -428,7 +352,7 @@ def _mount_matrix(device: Path) -> list[list[float]]:
 def open_lid_sensor() -> LidSensor | None:
     """The best sensor this machine offers, or ``None``. Call on the reading thread."""
     if sys.platform == "win32":
-        backends = (_WindowsHinge, _WindowsAccelerometer)
+        backends = (_WindowsHinge, _WindowsCustomHinge)
     elif sys.platform.startswith("linux"):
         backends = (_LinuxAccelerometer,)
     else:
@@ -529,7 +453,6 @@ class SensorAngleSource:
         with self._lock:
             self._status = SensorStatus(running=True, name=sensor.name)
 
-        take_switch = getattr(sensor, "take_switch", lambda: False)
         interval = 1.0 / POLL_RATE
         misses = 0
         window_started = time.monotonic()
@@ -556,8 +479,6 @@ class SensorAngleSource:
                         return
                 else:
                     misses = 0
-                    if take_switch():
-                        self._estimator.reset()
                     window_count += 1
                     if now - window_started >= 1.0:
                         rate = window_count / (now - window_started)

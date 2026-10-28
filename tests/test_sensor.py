@@ -1,4 +1,4 @@
-"""The lid sensor: gravity to angle, the Linux reader, and the reading thread."""
+"""The lid sensor: gravity to angle, the Linux reader, the Intel hinge reader, and the reading thread."""
 
 from __future__ import annotations
 
@@ -133,54 +133,36 @@ class TestSource:
             source.stop()
 
 
-class _Clock:
-    def __init__(self):
-        self.now = 0.0
-
-    def __call__(self):
-        return self.now
+class _Reading:
+    def __init__(self, properties):
+        self.properties = properties
 
 
-class TestChooser:
-    """A convertible with one accelerometer in the lid and one in the base."""
+class _CustomSensor:
+    def __init__(self, properties):
+        self.properties = properties
 
-    def _pair(self, lid=110.0, base=180.0):
-        clock = _Clock()
-        lid_sensor, base_sensor = _ScriptedSensor(lid), _ScriptedSensor(base)
-        # The base listed first, the way Windows can offer it as the default.
-        chooser = sensor.AccelerometerChooser([base_sensor, lid_sensor], clock=clock)
-        return chooser, clock, lid_sensor, base_sensor
+    def get_current_reading(self):
+        return None if self.properties is None else _Reading(self.properties)
 
-    def _close_lid(self, chooser, clock, lid_sensor, base_sensor, degrees, base_follow=0.0):
-        start_lid, start_base = lid_sensor.angle, base_sensor.angle
-        for step in range(1, 21):
-            clock.now += 1 / 60
-            lid_sensor.angle = start_lid - degrees * step / 20
-            base_sensor.angle = start_base - base_follow * step / 20
-            reading = chooser.read()
-        return reading
 
-    def test_starts_from_the_upright_sensor(self):
-        chooser, *_ = self._pair()
-        assert chooser.read()[0] == pytest.approx(110.0)
+class TestIntelHinge:
+    KEY = "{C458F8A7-4AE8-4777-9607-2E9BDD65110A}"
 
-    def test_follows_the_sensor_that_turns_with_the_lid(self):
-        # Both read similarly upright, so the first guess can be the base.
-        chooser, clock, lid, base = self._pair(lid=120.0, base=92.0)
-        assert chooser.read()[0] == pytest.approx(92.0)
-        reading = self._close_lid(chooser, clock, lid, base, 20.0, base_follow=0.1)
-        assert reading[0] == pytest.approx(lid.angle)
-        assert chooser.take_switch()
-        assert not chooser.take_switch()
+    def test_reads_the_first_custom_value_as_the_angle(self):
+        hinge = sensor._WindowsCustomHinge(
+            _CustomSensor({f"{self.KEY} 161": 118, f"{self.KEY} 162": 30})
+        )
+        assert hinge.read() == (118.0, 1.0)
 
-    def test_carrying_the_laptop_does_not_switch(self):
-        chooser, clock, lid, base = self._pair()
-        chooser.read()
-        self._close_lid(chooser, clock, lid, base, 20.0, base_follow=20.0)
-        assert chooser.read()[0] == pytest.approx(lid.angle)
-        assert not chooser.take_switch()
+    def test_matches_the_key_without_regard_to_case(self):
+        hinge = sensor._WindowsCustomHinge(_CustomSensor({f"{self.KEY.lower()} 161": 42.5}))
+        assert hinge.read() == (42.5, 1.0)
 
-    def test_closes_every_sensor(self):
-        chooser, _, lid, base = self._pair()
-        chooser.close()
-        assert lid.closed and base.closed
+    def test_folded_past_flat_is_not_trusted(self):
+        hinge = sensor._WindowsCustomHinge(_CustomSensor({f"{self.KEY} 161": 300}))
+        assert hinge.read() == (300.0, 0.0)
+
+    def test_no_reading_or_no_angle_is_none(self):
+        assert sensor._WindowsCustomHinge(_CustomSensor(None)).read() is None
+        assert sensor._WindowsCustomHinge(_CustomSensor({f"{self.KEY} 162": 30})).read() is None

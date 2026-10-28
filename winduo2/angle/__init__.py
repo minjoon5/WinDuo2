@@ -1,6 +1,6 @@
 """Recovering lid travel from the laptop's own sensors.
 
-``sensor``      the hinge angle sensor or lid accelerometer, on its own thread.
+``sensor``      the hinge angle sensor (Windows) or lid accelerometer (Linux), on its own thread.
 ``estimator``   lid angle to degrees of travel from neutral.
 ``lidswitch``   the operating system's own open/shut signal.
 """

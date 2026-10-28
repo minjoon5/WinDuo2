@@ -33,6 +33,8 @@ dependencies = [
     "winrt-runtime>=2.0; sys_platform == 'win32'",
     "winrt-Windows.Foundation>=2.0; sys_platform == 'win32'",
     "winrt-Windows.Devices.Sensors>=2.0; sys_platform == 'win32'",
+    "winrt-Windows.Devices.Sensors.Custom>=2.0; sys_platform == 'win32'",
+    "winrt-Windows.Foundation.Collections>=2.0; sys_platform == 'win32'",
     "winrt-Windows.Devices.Enumeration>=2.0; sys_platform == 'win32'",
 ]
 
