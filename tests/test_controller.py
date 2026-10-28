@@ -563,3 +563,65 @@ class TestEaseOut:
         assert steps[0] < middle / 3
         assert steps[-1] < middle / 3
         assert values[-1] == 0.0
+
+
+class TestTurningRound:
+    @staticmethod
+    def sweep(harness: Harness, to: float, rate: float) -> list:
+        """Move travel to ``to`` at ``rate`` degrees per second, either way,
+        and return every frame drawn, ``None`` included."""
+        frames = []
+        travel = harness.controller.travel
+        sign = 1.0 if to > travel else -1.0
+        while travel != to:
+            travel = travel + sign * rate * STEP
+            travel = min(travel, to) if sign > 0 else max(travel, to)
+            frames.append(harness.run(travel, velocity=sign * rate))
+        return frames
+
+    @staticmethod
+    def signed_progress(frame) -> float:
+        return -frame.progress if frame.opening else frame.progress
+
+    def test_a_small_fold_opened_well_past_neutral_flows_into_the_spread(self):
+        # Folded 18 degrees, then opened to 40 past where it started. The fold
+        # used to ease out on its own clock and the spread then started from
+        # wherever the lid had got to, a visible jump.
+        harness = Harness(trigger_travel=10.0, full_effect_travel=60.0)
+        harness.close(to=18.0, rate=60.0)
+        assert harness.controller.phase is Phase.RUNNING
+        frames = self.sweep(harness, to=-40.0, rate=120.0)
+        frames += [harness.run(-40.0, velocity=-120.0) for _ in range(30)]
+        assert all(frame is not None for frame in frames)
+        assert not any(frame.is_final for frame in frames)
+        assert frames[-1].opening and frames[-1].progress > 0.3
+        values = [self.signed_progress(frame) for frame in frames]
+        steps = [abs(b - a) for a, b in zip(values, values[1:], strict=False)]
+        # 120 degrees per second over a 60 degree ramp is 1/30 a frame.
+        assert max(steps) < 0.05
+
+    def test_a_small_open_folded_well_past_neutral_flows_into_the_lean(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=60.0)
+        self.sweep(harness, to=-18.0, rate=60.0)
+        assert harness.controller.phase is Phase.RUNNING
+        frames = self.sweep(harness, to=40.0, rate=120.0)
+        frames += [harness.run(40.0, velocity=120.0) for _ in range(30)]
+        assert all(frame is not None for frame in frames)
+        assert not frames[-1].opening and frames[-1].progress > 0.3
+        values = [self.signed_progress(frame) for frame in frames]
+        steps = [abs(b - a) for a, b in zip(values, values[1:], strict=False)]
+        assert max(steps) < 0.05
+
+    def test_turning_round_during_the_ease_out_picks_up_from_the_ease(self):
+        # Released, easing back, then the lid sets off the other way: the
+        # spread starts from where the ease had got to, not from the lid.
+        harness = Harness(trigger_travel=10.0, full_effect_travel=60.0)
+        harness.close(to=30.0, rate=60.0)
+        harness.run(30.0, frames=int(MINIMUM_DURATION / STEP) + 2)
+        harness.run(0.0, frames=3)
+        assert harness.controller.phase is Phase.CLOSING_OUT
+        eased = harness.controller._travel.value
+        harness.run(-25.0, velocity=-200.0)
+        assert harness.controller.phase is Phase.RUNNING
+        # One spring step from the ease, still on the folded side of neutral.
+        assert eased - 5.0 < harness.controller._travel.value < eased

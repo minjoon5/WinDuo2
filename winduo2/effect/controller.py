@@ -15,6 +15,12 @@ Opening has an effect of its own, the mirror of a close: the same thresholds
 and the same ramp, driven by how far the lid has opened, with the picture
 spreading up and out rather than leaning back, whether the lid is rising from
 shut or an open screen is being tilted further back.
+
+The two are one run, not two. Eased travel is signed, closing positive, and the
+picture leans back or spreads by its sign, so a lid folded a little and then
+opened further than it was folded passes straight through neutral, where both
+are flat, rather than easing the fold out on its own clock and then starting
+the spread from wherever the lid has got to by then.
 """
 
 from __future__ import annotations
@@ -135,7 +141,6 @@ class EffectController:
         self._velocity = 0.0
         self._confidence = 0.0
         self._neutral_angle = DEFAULT_NEUTRAL_ANGLE
-        self._opening = False
         self._sample_time = 0.0
         self._last_closing = -1e9
         self._last_opening = -1e9
@@ -241,8 +246,8 @@ class EffectController:
         return travel + speed * (staleness + PREDICTION_LATENCY)
 
     def _target_travel(self) -> float:
-        travel = -self._raw_travel if self._opening else self._raw_travel
-        return max(travel, 0.0)
+        """Signed, closing positive: the spring follows the lid through neutral."""
+        return self._raw_travel
 
     def _wants_closing(self, now: float) -> bool:
         # A lid resting below the threshold must not start the effect by itself,
@@ -268,13 +273,15 @@ class EffectController:
         if self.phase is Phase.RUNNING:
             if now - self._started_at <= MINIMUM_DURATION:
                 return True
-            # Released on the way back up, with hysteresis so a lid hovering on
-            # the threshold does not flicker. Travel collapsing to zero because
-            # the lid came to rest goes through this same door. Opening the
-            # same, the other way.
+            # Released on the way back to neutral, with hysteresis so a lid
+            # hovering on the threshold does not flicker. Travel collapsing to
+            # zero because the lid came to rest goes through this same door.
+            # Either direction: a fold that turns into an open keeps the run.
             release = settings.trigger_travel - settings.release_hysteresis
-            return self._target_travel() > release
+            return abs(self._target_travel()) > release
 
+        # Idle or easing out. A lid that turns round while the picture eases
+        # back takes the run up again from wherever the ease has got to.
         return self._wants_closing(now) or self._wants_opening(now)
 
     def step(self, now: float | None = None) -> Frame | None:
@@ -285,7 +292,9 @@ class EffectController:
         wanted = self._wants_effect(now)
 
         if self.phase is Phase.IDLE and wanted:
-            self._begin(now, opening=not self._wants_closing(now))
+            self._begin(now)
+        elif self.phase is Phase.CLOSING_OUT and wanted:
+            self._resume(now)
         elif self.phase is Phase.RUNNING and not wanted:
             self._begin_closing_out(now)
 
@@ -318,8 +327,12 @@ class EffectController:
     # levelling off toward ``tilt_limit``, so the tilt settles on its most
     # legible pose while blur and dimming carry the rest of the close.
 
-    def _frame(self, travel: float, is_final: bool = False) -> Frame:
+    def _frame(self, signed_travel: float, is_final: bool = False) -> Frame:
         settings = self.settings
+        # Leaning back or spreading is the sign; both are flat up to the
+        # trigger, so the sign can flip at neutral without a visible step.
+        opening = signed_travel < 0.0
+        travel = abs(signed_travel)
         span = max(settings.full_effect_travel, 1.0)
         past_trigger = max(travel - settings.trigger_travel, 0.0)
         progress = min(past_trigger / span, 1.0)
@@ -353,7 +366,7 @@ class EffectController:
             progress=progress,
             velocity=self._velocity,
             is_final=is_final,
-            opening=self._opening,
+            opening=opening,
         )
 
     def corners(self, frame: Frame, screen_size: tuple[float, float]):
@@ -381,20 +394,36 @@ class EffectController:
 
     # --- Transitions -----------------------------------------------------
 
-    def _begin(self, now: float, opening: bool = False) -> None:
+    def _begin(self, now: float) -> None:
         self.phase = Phase.RUNNING
         self._started_at = now
-        self._opening = opening
+        opening = self._target_travel() < 0.0
         # Start from where the lid actually is, so the picture does not sweep in
         # from flat after a fast close has already passed the threshold.
         self._travel.reset(self._target_travel())
         log.info(
             "effect on%s: travel %.1f deg, predicted %.1f, %.0f deg/s, confidence %.2f",
             " (opening)" if opening else "",
-            self._target_travel(),
+            abs(self._target_travel()),
             self._predicted_travel(now, opening),
             self._velocity,
             self._confidence,
+        )
+
+    def _resume(self, now: float) -> None:
+        """Back to following the lid, from where the ease-out has got to.
+
+        Not :meth:`_begin`, which starts from where the lid is: a fold that
+        turns into an open trips the release on its way through neutral, and
+        jumping from the half-eased fold to the open would be the very step
+        this exists to avoid. The spring carries the picture across instead.
+        """
+        self.phase = Phase.RUNNING
+        self._started_at = now
+        log.info(
+            "effect resumed: travel %.1f deg, eased %.1f",
+            self._raw_travel,
+            self._travel.value,
         )
 
     def _begin_closing_out(self, now: float) -> None:
