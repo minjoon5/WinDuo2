@@ -497,25 +497,20 @@ class TestOpening:
         controller.step(harness.now)
         assert controller.phase is Phase.CLOSING_OUT
 
-    def test_tilting_an_open_lid_back_does_nothing(self):
+    def test_tilting_an_open_lid_further_back_spreads_it_too(self):
         harness = Harness(trigger_travel=10.0)
-        assert self.open_from(harness, 100.0, 140.0) == []
-        assert harness.controller.phase is Phase.IDLE
+        frames = self.open_from(harness, 100.0, 140.0)
+        assert frames and all(frame.opening for frame in frames)
+        assert frames[-1].progress > 0.3
+
+    def test_a_small_nudge_back_does_nothing(self):
+        harness = Harness(trigger_travel=10.0)
+        assert self.open_from(harness, 100.0, 106.0) == []
 
     def test_a_slow_drift_open_does_not_trigger(self):
         harness = Harness(trigger_travel=10.0)
         self.shut(harness)
         assert self.open_from(harness, 5.0, 40.0, rate=2.0) == []
-
-    def test_a_second_close_from_partway_keeps_the_open_angle(self):
-        # Closing from 100 to 60, resting, then on to shut: the lid was open at
-        # 100, not at 60, so the open angle stays at 100.
-        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        harness.close(to=40.0)
-        harness.controller._neutral_angle = 60.0
-        harness.controller.phase = Phase.IDLE
-        harness.controller._begin(harness.now)
-        assert harness.controller._open_angle == 100.0
 
 
 class TestEaseOut:

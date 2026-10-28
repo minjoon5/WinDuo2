@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat.start(250)
     heartbeat.timeout.connect(lambda: None)
 
-    log.info("WinDuo2 %s ready", __version__)
+    log.info("WinDuo2 %s ready%s", __version__, _since_boot())
     code = app.exec()
     engine.stop()
     return code
@@ -192,21 +192,41 @@ def _print_sensor(seconds: float = 20.0) -> int:
     return 0
 
 
+def _since_boot() -> str:
+    """How long the machine has been up, for the log: at sign-in it says how
+    long WinDuo2 took to come up."""
+    if sys.platform != "win32":
+        return ""
+    import ctypes
+
+    getter = ctypes.windll.kernel32.GetTickCount64
+    getter.restype = ctypes.c_ulonglong
+    return f", {getter() / 1000.0:.0f} s after the machine started"
+
+
 def _follow_launch_at_login(store) -> None:
-    """Keep the Windows startup entry in step with the setting."""
+    """Keep the Windows startup entry in step with the setting.
+
+    On a worker thread of its own: registering the sign-in task shells out to
+    ``schtasks``, and the tray should not wait for it. One worker, so changes
+    are applied in the order they were made.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
     from winduo2 import autostart
 
+    worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="winduo2-autostart")
     applied = store.settings.launch_at_login
     # Written on every start, not just when the box is ticked, so the entry
     # follows the exe if it has moved since.
-    autostart.sync(applied)
+    worker.submit(autostart.sync, applied)
 
     def changed() -> None:
         nonlocal applied
         wanted = store.settings.launch_at_login
         if wanted != applied:
             applied = wanted
-            autostart.sync(wanted)
+            worker.submit(autostart.sync, wanted)
 
     store.subscribe(changed)
 

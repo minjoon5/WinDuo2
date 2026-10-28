@@ -13,8 +13,8 @@ still-duration, and its awaiting-release flag are all gone.
 
 Opening has an effect of its own, the mirror of a close: the same thresholds
 and the same ramp, driven by how far the lid has opened, with the picture
-spreading up and out rather than leaning back. Only a lid opened from somewhere
-closed runs it, so tilting an open screen back a little leaves it alone.
+spreading up and out rather than leaning back, whether the lid is rising from
+shut or an open screen is being tilted further back.
 """
 
 from __future__ import annotations
@@ -139,9 +139,6 @@ class EffectController:
         self._velocity = 0.0
         self._confidence = 0.0
         self._neutral_angle = DEFAULT_NEUTRAL_ANGLE
-        # Where the lid stood open before the last close. Opening only runs
-        # from a lid resting well below this.
-        self._open_angle = DEFAULT_NEUTRAL_ANGLE
         self._opening = False
         self._sample_time = 0.0
         self._last_closing = -1e9
@@ -180,7 +177,7 @@ class EffectController:
             return ACTIVE_INTERVAL
         # Faster polling once the lid is moving at all, so the trigger is not
         # found up to an eighth of a second late.
-        if abs(self._velocity) > 1.0 or self._raw_travel > 1.0:
+        if abs(self._velocity) > 1.0 or abs(self._raw_travel) > 1.0:
             return ACTIVE_INTERVAL
         return IDLE_INTERVAL
 
@@ -191,12 +188,6 @@ class EffectController:
     @property
     def travel(self) -> float:
         return self._raw_travel
-
-    @property
-    def opening(self) -> bool:
-        """The lid is rising from somewhere closed, so an opening run may be
-        about to start."""
-        return self._velocity < -1.0 and self._closed_at_rest()
 
     # --- Input -----------------------------------------------------------
 
@@ -249,11 +240,6 @@ class EffectController:
         staleness = min(max(now - self._sample_time, 0.0), 0.12)
         return travel + speed * (staleness + PREDICTION_LATENCY)
 
-    def _closed_at_rest(self) -> bool:
-        """Whether the lid rested well below where it stood open before the
-        last close, which is what an opening run has to start from."""
-        return self._open_angle - self._neutral_angle >= self.settings.trigger_travel
-
     def _target_travel(self) -> float:
         travel = -self._raw_travel if self._opening else self._raw_travel
         return max(travel, 0.0)
@@ -265,11 +251,10 @@ class EffectController:
         return closing_recently and self._predicted_travel(now) >= self.settings.trigger_travel
 
     def _wants_opening(self, now: float) -> bool:
-        # The same rule mirrored, from a lid that was resting closed.
+        # The same rule mirrored.
         opening_recently = now - self._last_opening < CLOSING_MEMORY
         return (
             opening_recently
-            and self._closed_at_rest()
             and self._predicted_travel(now, opening=True) >= self.settings.trigger_travel
         )
 
@@ -400,11 +385,6 @@ class EffectController:
         self.phase = Phase.RUNNING
         self._started_at = now
         self._opening = opening
-        # A close starting from a lid that rests where the effect would already
-        # show is the second half of an earlier close, not a fresh one from
-        # open, so the open angle stays where that earlier close left it.
-        if not opening and self._open_angle - self._neutral_angle < self.settings.trigger_travel:
-            self._open_angle = self._neutral_angle
         # Start from where the lid actually is, so the picture does not sweep in
         # from flat after a fast close has already passed the threshold.
         self._travel.reset(self._target_travel())

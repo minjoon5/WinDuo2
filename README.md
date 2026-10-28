@@ -17,7 +17,7 @@ pip install git+https://github.com/minjoon5/WinDuo2
 python -m winduo2
 ```
 
-WinDuo2 sits in the notification area. Right-click it for settings. Tick *Start with Windows* there to have it run every time you sign in; it then appears in Task Manager under *Startup apps*. The settings window opens by itself only the very first time WinDuo2 runs, never at sign-in.
+WinDuo2 sits in the notification area. Right-click it for settings. Tick *Start with Windows* there to have it run every time you sign in; it is registered as a *WinDuo2* task in Task Scheduler that runs as soon as you sign in, rather than as a Task Manager startup app, which Windows holds back for a while after sign-in. The settings window opens by itself only the very first time WinDuo2 runs, never at sign-in.
 
 To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 --sensors` and move the lid: it prints the angle it sees for twenty seconds. `python -m winduo2 --preview` plays the effect once on whatever is on screen.
 
@@ -25,7 +25,7 @@ To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 
 
 The effect is continuous, not a one-shot animation. It fades in once you have closed about 10°, grows as you keep closing, reaches full strength at about 85°, and holds there for the rest of the way down. Open back up and it reverses. Both thresholds are adjustable.
 
-Opening has an effect of its own, the mirror of a close. Lift the lid from shut, or from anywhere well below where your last close started, and once it has opened about 10° the picture starts to spread: its top edge widens past both sides of the screen and runs up past the top, with the bottom edge held on the hinge, growing as you keep opening and reaching full strength at about 85°. When the lid comes to rest it eases back into place. A lid already open that you tilt further back leaves the screen alone.
+Opening has an effect of its own, the mirror of a close. Lift the lid from shut, or tilt an open screen further back, and once it has opened about 10° the picture starts to spread: its top edge widens past both sides of the screen and runs up past the top, with the bottom edge held on the hinge, growing as you keep opening and reaching full strength at about 85°. When the lid comes to rest it eases back into place.
 
 The picture behaves like a sheet hinged at the bottom of the screen that leans back as the lid closes, so its top edge comes down and narrows. By default it leans back at 0.8° per degree of closing, and the tilt levels off at about 55° past the trigger instead of stretching the picture into a smear as the lid nears flat. *Lean back* and *Tilt limit* in the settings adjust both.
 
