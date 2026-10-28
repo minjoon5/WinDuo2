@@ -214,9 +214,14 @@ class Store:
         self._notify()
 
     def reset_settings(self) -> None:
-        """Back to factory values."""
+        """Back to factory values.
+
+        Not the record that the first-run introduction has been shown: resetting
+        the sliders is not installing again, and clearing it opened the settings
+        window on every later start.
+        """
         with self._lock:
-            self.settings = Settings()
+            self.settings = Settings(has_seen_intro=self.settings.has_seen_intro)
             _save(self._config_path, self.settings)
         self._notify()
 

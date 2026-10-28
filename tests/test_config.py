@@ -80,3 +80,12 @@ class TestSaving:
         store.update(recession=2.0)
         store.reset_settings()
         assert json.loads(path.read_text()) == {}
+
+    def test_reset_keeps_the_first_run_record(self, tmp_path):
+        from winduo2.config import Store
+
+        path = tmp_path / "config.json"
+        store = Store(config_path=path)
+        store.update(has_seen_intro=True, recession=2.0)
+        store.reset_settings()
+        assert Store(config_path=path).settings.has_seen_intro

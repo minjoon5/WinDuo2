@@ -9,7 +9,6 @@ from winduo2.config import Settings
 from winduo2.effect.controller import (
     CLOSING_MEMORY,
     MINIMUM_DURATION,
-    REOPEN_GRACE,
     EffectController,
     Phase,
 )
@@ -179,20 +178,10 @@ class TestRelease:
         harness.blind(3)
         assert harness.controller.phase is Phase.CLOSING_OUT
 
-    def test_a_shut_lid_holds_the_effect_for_the_reopen(self):
-        # The display comes back blurred and clears as the lid opens, rather
-        # than coming back sharp and blurring once the sensor catches up.
+    def test_a_shut_lid_stops_everything_at_once(self):
         harness = Harness(trigger_travel=8.0)
         harness.close(to=25.0)
         harness.controller.lid_shut()
-        frame = harness.controller.step(harness.now)
-        assert harness.controller.phase is Phase.RUNNING
-        assert frame.opening and frame.progress == pytest.approx(1.0)
-
-    def test_suspending_stops_everything_at_once(self):
-        harness = Harness(trigger_travel=8.0)
-        harness.close(to=25.0)
-        harness.controller.suspend()
         assert harness.controller.phase is Phase.IDLE
         assert harness.controller.step(harness.now) is None
 
@@ -423,7 +412,7 @@ class TestNeutralAngleDuringARun:
 
 
 class TestOpening:
-    """Opening runs the effect backwards, from where the last close started."""
+    """Opening mirrors a close: original first, spreading up and out as it opens."""
 
     @staticmethod
     def open_from(harness: Harness, angle: float, to: float, rate: float = 60.0):
@@ -460,115 +449,67 @@ class TestOpening:
 
     @staticmethod
     def shut(harness: Harness) -> None:
-        """Close all the way and have the lid switch report it."""
+        """Close from 100 to nearly shut, and have the lid switch report it."""
         harness.close(to=95.0)
         harness.controller.lid_shut()
 
-    @staticmethod
-    def dropped(harness: Harness) -> None:
-        """Close to nearly shut, then lose the run without the lid switch."""
-        harness.close(to=95.0)
-        harness.controller.suspend()
-        harness.controller.resume()
-
-    def test_a_shut_lid_holds_the_effect_at_full_strength(self):
+    def test_opening_from_shut_starts_flat_and_grows(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         self.shut(harness)
-        # Asleep, the sensor reports nothing at all.
-        frame = harness.blind(frames=600)
-        assert harness.controller.phase is Phase.RUNNING
-        assert frame.progress == pytest.approx(1.0)
-
-    def test_opening_from_shut_goes_from_blurred_to_clear(self):
-        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        self.shut(harness)
-        harness.controller.lid_opened(harness.now)
         frames = self.open_from(harness, 5.0, 100.0)
-        assert all(frame.opening for frame in frames)
-        # The first frame back is fully blurred, and it only ever clears.
-        assert frames[0].progress == pytest.approx(1.0)
+        assert frames and all(frame.opening for frame in frames)
         progress = [frame.progress for frame in frames]
-        assert all(b <= a + 1e-9 for a, b in zip(progress, progress[1:], strict=False))
-        assert harness.controller.phase is not Phase.RUNNING
+        assert progress[0] < 0.1
+        assert all(b >= a - 1e-9 for a, b in zip(progress, progress[1:], strict=False))
+        assert progress[-1] == pytest.approx(1.0)
 
-    def test_rough_readings_after_a_wake_cannot_make_it_blurrier(self):
+    def test_progress_follows_how_far_the_lid_has_opened(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         self.shut(harness)
-        harness.controller.lid_opened(harness.now)
-        self.open_from(harness, 5.0, 60.0)
-        before = harness.controller._travel.value
-        # One reading claims the lid fell back to nearly shut.
-        harness.now += STEP
-        harness.controller.observe(
-            AngleSample(
-                travel=50.0, velocity=0.0, confidence=0.9,
-                timestamp=harness.now, at_rest=False, absolute_angle=10.0,
-            ),
-            harness.now,
-        )
-        harness.controller.step(harness.now)
-        assert harness.controller._travel.value <= before + 1e-9
-
-    def test_an_open_lid_the_sensor_never_sees_lets_go(self):
-        harness = Harness(trigger_travel=10.0)
-        self.shut(harness)
-        harness.controller.lid_opened(harness.now)
-        harness.blind(frames=int(REOPEN_GRACE / STEP) + 2)
-        assert harness.controller.phase is not Phase.RUNNING
-
-    def test_shutting_with_nothing_on_screen_starts_nothing(self):
-        harness = Harness(trigger_travel=10.0)
-        harness.controller.lid_shut()
-        assert harness.controller.phase is Phase.IDLE
+        frames = self.open_from(harness, 5.0, 45.0, rate=30.0)
+        # Opened 40 degrees from 5: 30 past the trigger of a 75 ramp, less
+        # what the spring is still catching up.
+        assert frames[-1].progress == pytest.approx(30.0 / 75.0, abs=0.06)
 
     def test_opening_spreads_the_picture_instead_of_leaning_it_back(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         self.shut(harness)
-        harness.controller.lid_opened(harness.now)
-        frames = self.open_from(harness, 5.0, 40.0)
+        frames = self.open_from(harness, 5.0, 70.0)
         size = (1920.0, 1080.0)
-        corners = harness.controller.corners(frames[0], size)
+        corners = harness.controller.corners(frames[-1], size)
         assert corners[2][1] > size[1] and corners[2][0] > size[0]
 
-    def test_each_angle_shows_what_it_showed_on_the_way_down(self):
-        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        self.dropped(harness)
-        frames = self.open_from(harness, 5.0, 100.0, rate=30.0)
-        # 100 open, 60 is 40 degrees closed: 30 past the trigger of a 75 ramp.
-        at_60 = min(frames, key=lambda f: abs(f.current_angle - 60.0))
-        assert at_60.progress == pytest.approx(30.0 / 75.0, abs=0.05)
-
-    def test_opening_from_open_does_nothing(self):
+    def test_the_lid_coming_to_rest_open_eases_back(self):
         harness = Harness(trigger_travel=10.0)
-        assert self.open_from(harness, 100.0, 130.0) == []
-        assert harness.controller.phase is Phase.IDLE
-
-    def test_a_slow_drift_open_does_not_trigger(self):
-        harness = Harness(trigger_travel=10.0)
-        self.dropped(harness)
-        assert self.open_from(harness, 5.0, 40.0, rate=2.0) == []
-
-    def test_a_lid_stopping_partway_open_ends_the_effect(self):
-        harness = Harness(trigger_travel=10.0)
-        self.dropped(harness)
-        self.open_from(harness, 5.0, 50.0)
+        self.shut(harness)
+        self.open_from(harness, 5.0, 100.0)
         assert harness.controller.phase is Phase.RUNNING
-        # The estimator re-zeros neutral at 50, so opening travel collapses.
-        harness.now += 1.0
+        # The estimator re-zeros neutral where the lid stopped.
+        harness.now += 0.5
         controller = harness.controller
         controller.observe(
             AngleSample(
                 travel=0.0, velocity=0.0, confidence=0.9,
-                timestamp=harness.now, at_rest=True, absolute_angle=50.0,
+                timestamp=harness.now, at_rest=True, absolute_angle=100.0,
             ),
             harness.now,
         )
         controller.step(harness.now)
         assert controller.phase is Phase.CLOSING_OUT
 
+    def test_tilting_an_open_lid_back_does_nothing(self):
+        harness = Harness(trigger_travel=10.0)
+        assert self.open_from(harness, 100.0, 140.0) == []
+        assert harness.controller.phase is Phase.IDLE
+
+    def test_a_slow_drift_open_does_not_trigger(self):
+        harness = Harness(trigger_travel=10.0)
+        self.shut(harness)
+        assert self.open_from(harness, 5.0, 40.0, rate=2.0) == []
+
     def test_a_second_close_from_partway_keeps_the_open_angle(self):
         # Closing from 100 to 60, resting, then on to shut: the lid was open at
-        # 100, not at 60, so opening unwinds all the way to 100.
+        # 100, not at 60, so the open angle stays at 100.
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         harness.close(to=40.0)
         harness.controller._neutral_angle = 60.0

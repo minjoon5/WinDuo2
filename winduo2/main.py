@@ -46,6 +46,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="open the settings window at launch",
     )
+    # Written into the startup entry, not typed: see ``autostart.FLAG``.
+    parser.add_argument("--autostart", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-v", "--verbose", action="store_true", help="log more")
     return parser.parse_args(argv)
 
@@ -116,7 +118,9 @@ def main(argv: list[str] | None = None) -> int:
 
     tray = TrayController(store, engine)
     engine.start()
-    tray.show()
+    # Windows starting the app at sign-in must not put a window in front of
+    # whatever the user signed in to do, first run or not.
+    tray.show(introduce=not options.autostart)
 
     if options.settings:
         QTimer.singleShot(0, tray.open_settings)

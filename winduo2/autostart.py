@@ -21,6 +21,10 @@ __all__ = ["command", "is_supported", "sync"]
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "WinDuo2"
 
+#: Passed on the command line at sign-in, so a start Windows made can be told
+#: apart from one the user made. Nothing opens on its own at sign-in.
+FLAG = "--autostart"
+
 
 def is_supported() -> bool:
     return sys.platform == "win32"
@@ -32,12 +36,12 @@ def command() -> str:
     if getattr(sys, "frozen", False):
         # The packaged WinDuo2.exe. Written fresh on every start, so moving the
         # file and running it once from its new place keeps the entry working.
-        return f'"{executable}"'
+        return f'"{executable}" {FLAG}'
     # From source: pythonw rather than python, so no console window opens.
     windowed = executable.with_name("pythonw.exe")
     if windowed.exists():
         executable = windowed
-    return f'"{executable}" -m winduo2'
+    return f'"{executable}" -m winduo2 {FLAG}'
 
 
 def sync(enabled: bool) -> None:

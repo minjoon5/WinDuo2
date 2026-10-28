@@ -2,9 +2,9 @@
 
 Windows knows when the lid is shut, and broadcasts it through
 ``GUID_LIDSWITCH_STATE_CHANGE``. That is binary rather than an angle, so it
-cannot drive the effect, but it is instant and free. Shutting holds a running
-effect at full strength, so the display comes back blurred on wake, and opening
-lets the effect unwind as the lid rises.
+cannot drive the effect, but it is instant and free. It ends the effect,
+because the display is about to go off anyway and a warped final frame should
+not be what comes back on wake.
 
 Implemented as a message-only window on its own thread. Coupling this to the Qt
 event loop would work, but a hidden window inside the widget hierarchy is one
@@ -142,8 +142,8 @@ class LidSwitch:
 
         The ACPI file is the one lid source that needs no privileges and no
         extra dependency. A quarter-second of lag does not matter here: the
-        lid switch only holds an effect that is already on screen while the
-        display is off, and lets it go once the lid opens.
+        lid switch only ends an effect that is already running while the
+        display turns off.
         """
         paths = sorted(Path("/proc/acpi/button/lid").glob("*/state"))
         if not paths:

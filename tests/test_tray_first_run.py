@@ -57,10 +57,10 @@ def _tray(store):
     return tray, opened
 
 
-def _show(tray, app):
+def _show(tray, app, introduce=True):
     from PyQt6.QtTest import QTest
 
-    tray.show()
+    tray.show(introduce=introduce)
     # The settings window is opened on a timer, after the balloon.
     QTest.qWait(900)
     tray.icon.hide()
@@ -80,4 +80,10 @@ class TestFirstRun:
         store.update(has_seen_intro=True)
         tray, opened = _tray(store)
         _show(tray, app)
+        assert opened == []
+
+    def test_a_start_at_sign_in_never_does(self, app, tmp_path):
+        store = Store(config_path=tmp_path / "config.json")
+        tray, opened = _tray(store)
+        _show(tray, app, introduce=False)
         assert opened == []

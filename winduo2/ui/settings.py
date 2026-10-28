@@ -402,7 +402,10 @@ class SettingsWindow(QWidget):
             self._reading_caption.setText("Waiting for the lid sensor")
             return
 
-        self._reading.setText(f"{max(sample.travel, 0.0):.1f}\u00b0")
+        # Whole degrees. Travel is measured from neutral, which is an average
+        # of the resting readings, so it carries a fraction even when the
+        # sensor reports whole degrees; the fraction is noise, not precision.
+        self._reading.setText(f"{max(sample.travel, 0.0):.0f}\u00b0")
         self._confidence.set_progress(sample.confidence, steady=sample.at_rest)
         if self.engine.is_effect_running:
             self._reading_caption.setText("The effect is running")

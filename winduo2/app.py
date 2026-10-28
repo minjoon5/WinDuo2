@@ -292,9 +292,9 @@ class Engine(QObject):
         the effect is supposed to follow.
 
         So the capture starts as soon as the lid is moving downward at all, well
-        before the trigger, or upward from somewhere the effect would run
-        backwards, and lingers briefly afterwards in case the lid is about to
-        move again. A lid sitting still keeps nothing running.
+        before the trigger, or upward from a lid resting closed, and lingers
+        briefly afterwards in case the lid is about to move again. A lid sitting
+        still keeps nothing running.
         """
         settings = self.store.settings
         if not settings.enabled:
@@ -400,9 +400,7 @@ class Engine(QObject):
         # attributes here, and the timer re-reads them next tick. Emitting the
         # signal is also thread safe; Qt queues it onto whatever thread each
         # connected slot actually lives on.
-        if is_open:
-            self.controller.lid_opened()
-        else:
+        if not is_open:
             self.controller.lid_shut()
         self.lid_state_changed.emit(is_open)
 

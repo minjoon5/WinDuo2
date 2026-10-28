@@ -39,12 +39,12 @@ class TrayController(QObject):
         self._tooltip.setInterval(400)
         self._tooltip.timeout.connect(self._refresh)
 
-    def show(self) -> None:
+    def show(self, introduce: bool = True) -> None:
         self.icon.show()
         self._tooltip.start()
         self._refresh()
 
-        if not self.store.settings.has_seen_intro:
+        if introduce and not self.store.settings.has_seen_intro:
             self._introduce()
 
     # --- Menu ------------------------------------------------------------
