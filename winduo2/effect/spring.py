@@ -26,9 +26,19 @@ class CriticallyDampedSpring:
         # Radians per second. Higher follows the target faster and smooths less.
         self.frequency = float(frequency)
 
-    def advance(self, target: float, dt: float) -> float:
+    def advance(self, target: float, dt: float, target_velocity: float = 0.0) -> float:
+        """Step toward ``target``. ``target_velocity`` is how fast the target
+        itself is moving: damping against the difference rather than against
+        the spring's own speed lets it keep pace with a moving target instead
+        of trailing it by ``2 * speed / frequency``, 11 degrees for a lid
+        moving at 90 degrees per second at the default frequency."""
         f = self.frequency
-        acceleration = f * f * (target - self.value) - 2 * f * self.velocity
+        # Only while behind. The speed comes from a fit over the last tenth of
+        # a second, so it outlives a lid that stops; carried past the target it
+        # overshot a quick close by several degrees and swung back.
+        if (target - self.value) * target_velocity <= 0.0:
+            target_velocity = 0.0
+        acceleration = f * f * (target - self.value) - 2 * f * (self.velocity - target_velocity)
         self.velocity += acceleration * dt
         self.value += self.velocity * dt
         return self.value

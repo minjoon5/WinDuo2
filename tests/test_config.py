@@ -13,16 +13,14 @@ from winduo2.config import Settings
 
 
 class TestDefaults:
-    def test_the_effect_starts_at_ten_degrees_of_travel(self):
-        # Raised from 8. A lid resting slightly closed, or someone leaning on
-        # the desk, could brush past 8 degrees; 10 gives a little more room
-        # before anything happens.
-        assert Settings().trigger_travel == 10.0
+    def test_the_effect_starts_at_five_degrees_of_travel(self):
+        # Lowered from 10, so the effect answers the lid sooner.
+        assert Settings().trigger_travel == 5.0
 
     def test_the_default_survives_a_clamp(self):
         # clamped() rebuilds the dataclass; a default that only lived in the
         # constructor's keyword argument would not survive that round trip.
-        assert Settings().clamped().trigger_travel == 10.0
+        assert Settings().clamped().trigger_travel == 5.0
 
 
 class TestTheLightSettings:

@@ -34,7 +34,11 @@ class Settings:
 
     # --- When the effect starts -----------------------------------------
     #: Degrees of closing away from neutral that start the effect.
-    trigger_travel: float = 10.0
+    #:
+    #: 5 rather than 10, so the effect shows up as soon as the lid is moved
+    #: on purpose. Rest is the estimator's call, not this threshold's, so a lid
+    #: left slightly closed still becomes the new neutral and starts nothing.
+    trigger_travel: float = 5.0
     #: Further degrees of closing to reach full strength.
     #:
     #: Worth not shortening. Dimming deliberately leads blur, so compressing the

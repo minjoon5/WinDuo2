@@ -140,6 +140,7 @@ class EffectController:
         self._raw_travel = 0.0
         self._velocity = 0.0
         self._confidence = 0.0
+        self._at_rest = True
         self._neutral_angle = DEFAULT_NEUTRAL_ANGLE
         self._sample_time = 0.0
         self._last_closing = -1e9
@@ -206,6 +207,7 @@ class EffectController:
         self._raw_travel = sample.travel
         self._velocity = sample.velocity
         self._confidence = sample.confidence
+        self._at_rest = sample.at_rest
         self._sample_time = sample.timestamp
         # Held for the whole run. Neutral re-zeros when a lid stops partway,
         # which moves this by the full travel in one reading; mid-run that
@@ -276,9 +278,17 @@ class EffectController:
             # Released on the way back to neutral, with hysteresis so a lid
             # hovering on the threshold does not flicker. Travel collapsing to
             # zero because the lid came to rest goes through this same door.
-            # Either direction: a fold that turns into an open keeps the run.
+            #
+            # Not while the lid is still moving, though. A fold that turns into
+            # an open passes through the release band on its way across
+            # neutral; releasing there froze the picture for the ease-out's
+            # first frames and threw away the spring's speed, so the spread
+            # started late from a standstill. Inside the band the picture is
+            # flat anyway, so staying up costs nothing.
             release = settings.trigger_travel - settings.release_hysteresis
-            return abs(self._target_travel()) > release
+            if abs(self._target_travel()) > release:
+                return True
+            return not self._at_rest
 
         # Idle or easing out. A lid that turns round while the picture eases
         # back takes the run up again from wherever the ease has got to.
@@ -302,12 +312,18 @@ class EffectController:
             return None
 
         if self.phase is not Phase.CLOSING_OUT:
-            self._travel.advance(self._target_travel(), dt)
+            # Fed the lid's speed as well as its place, so the picture keeps
+            # pace with a moving lid rather than trailing it, which on the way
+            # through neutral held back the start of the other direction.
+            self._travel.advance(self._target_travel(), dt, self._velocity)
             return self._frame(self._travel.value)
 
         elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION
         if elapsed < 1.0:
+            previous = self._travel.value
             self._travel.reset(self._closing_out_from * (1.0 - ease_in_out(elapsed)))
+            # Kept, so a run taken up again carries on at the ease's pace.
+            self._travel.velocity = (self._travel.value - previous) / dt
             return self._frame(self._travel.value)
 
         # The frame that fades out has to match the screen behind it exactly, so

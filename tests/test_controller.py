@@ -623,5 +623,36 @@ class TestTurningRound:
         eased = harness.controller._travel.value
         harness.run(-25.0, velocity=-200.0)
         assert harness.controller.phase is Phase.RUNNING
-        # One spring step from the ease, still on the folded side of neutral.
-        assert eased - 5.0 < harness.controller._travel.value < eased
+        # One spring step from the ease: still leaning back, past the trigger
+        # on the folded side, not jumped across to the lid.
+        assert 10.0 < harness.controller._travel.value < eased
+
+    def test_a_fold_turned_into_an_open_spreads_as_soon_as_a_plain_open(self):
+        # Through the real estimator, with a hinge sensor's whole degrees. The
+        # fold used to be released on its way through neutral and the spread
+        # restarted from a standstill, a tenth of a second behind the lid.
+        from winduo2.angle.estimator import TravelEstimator
+
+        def first_spread(fold: float) -> float:
+            estimator = TravelEstimator()
+            controller = EffectController(Settings())
+            now, opened_at = 0.0, None
+            while now < 2.5:
+                now += STEP
+                t = now - 1.0
+                if t < 0.0:
+                    lid = 100.0
+                elif t < fold / 60.0:
+                    lid = 100.0 - 60.0 * t
+                else:
+                    lid = min(100.0 - fold + 90.0 * (t - fold / 60.0), 140.0)
+                controller.observe(estimator.feed(float(round(lid)), 1.0, now), now)
+                frame = controller.step(now)
+                if opened_at is None and lid >= 105.0:
+                    opened_at = now
+                if frame is not None and frame.opening and frame.progress > 0.005:
+                    return now - opened_at
+            raise AssertionError("never spread")
+
+        assert first_spread(15.0) <= first_spread(0.0) + STEP + 1e-9
+        assert first_spread(15.0) < 0.05
