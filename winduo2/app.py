@@ -22,7 +22,7 @@ from winduo2.log import get_logger
 from winduo2.render import win32
 from winduo2.render.capture import CaptureError, ScreenCapture
 from winduo2.render.overlay import DepthOverlay, FrameParams
-from winduo2.render.pointer import PointerStandIn
+from winduo2.render.pointer import PointerHider
 
 log = get_logger("app")
 
@@ -92,7 +92,7 @@ class Engine(QObject):
         self.controller = EffectController(store.settings)
         self.sensor = SensorAngleSource(store.settings)
         self.overlay = DepthOverlay()
-        self.pointer = PointerStandIn()
+        self.pointer = PointerHider()
         self.capture: ScreenCapture | None = None
         self.lid = LidSwitch(self._on_lid_change)
 
@@ -276,8 +276,6 @@ class Engine(QObject):
         new_frame = (
             self.capture.take() if self.capture is not None and wants_frame else None
         )
-        if new_frame is not None and self.capture is not None:
-            new_frame = self.pointer.draw(new_frame, self.capture.native_size)
         self.overlay.submit(new_frame, params)
 
     # --- Pre-warming -----------------------------------------------------
@@ -359,7 +357,7 @@ class Engine(QObject):
         # Start and the other shell flyouts sit above any window this app may
         # make, and the pointer above all of them, so neither would be covered
         # by the effect. The flyouts are closed, as the lid closing would do
-        # anyway, and the pointer moves into the picture.
+        # anyway, and the pointer is hidden until the effect ends.
         win32.close_shell_flyouts()
         self.pointer.begin()
 

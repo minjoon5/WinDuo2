@@ -40,7 +40,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 - **It needs a hinge angle sensor.** Laptops without one, which includes most ordinary clamshells, are not supported, and WinDuo2 says so in the tray. The lid accelerometer alone is no longer used on Windows.
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
-- **Start, search and the notification flyouts close when the effect starts.** Windows keeps them in a layer above every window an ordinary app can make, so they cannot be blurred in place; closing them is what the lid closing would do anyway. The pointer is hidden for the length of the effect and drawn into the picture instead, so it blurs with everything else. An app that draws a cursor of its own, as some games do, keeps it sharp.
+- **Start, search and the notification flyouts close when the effect starts.** Windows keeps them in a layer above every window an ordinary app can make, so they cannot be blurred in place; closing them is what the lid closing would do anyway. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
 

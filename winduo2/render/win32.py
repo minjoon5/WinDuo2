@@ -13,8 +13,8 @@ three things it has no API for decide whether this effect works at all:
 Topmost is not the top, though. The pointer is drawn by the display hardware
 after composition, and the Start menu, search and the notification flyouts
 live in z-order bands above every topmost window that only a signed
-``uiAccess`` process can reach. The pointer is therefore hidden and drawn into
-the picture instead, and those flyouts are closed when the effect starts.
+``uiAccess`` process can reach. The pointer is therefore hidden, and those
+flyouts are closed, when the effect starts.
 """
 
 from __future__ import annotations
@@ -32,8 +32,6 @@ __all__ = [
     "make_click_through",
     "raise_topmost",
     "is_windows",
-    "pointer_image",
-    "pointer_position",
     "hide_pointer",
     "restore_pointer",
     "close_shell_flyouts",
@@ -156,10 +154,7 @@ def supports_capture_exclusion() -> bool:
 
 # --- The pointer ---------------------------------------------------------
 
-_CURSOR_SHOWING = 0x00000001
-_DI_NORMAL = 0x0003
 _SPI_SETCURSORS = 0x0057
-_DIB_RGB_COLORS = 0
 
 #: Every system cursor ``SetSystemCursor`` can replace. Applications that ask
 #: for a stock cursor get these shared ones, so blanking them hides the pointer
@@ -182,176 +177,16 @@ _SYSTEM_CURSORS = (
 )
 
 
-class _CURSORINFO(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", wintypes.DWORD),
-        ("flags", wintypes.DWORD),
-        ("hCursor", wintypes.HANDLE),
-        ("ptScreenPos", wintypes.POINT),
-    ]
-
-
-class _ICONINFO(ctypes.Structure):
-    _fields_ = [
-        ("fIcon", wintypes.BOOL),
-        ("xHotspot", wintypes.DWORD),
-        ("yHotspot", wintypes.DWORD),
-        ("hbmMask", wintypes.HBITMAP),
-        ("hbmColor", wintypes.HBITMAP),
-    ]
-
-
-class _BITMAP(ctypes.Structure):
-    _fields_ = [
-        ("bmType", wintypes.LONG),
-        ("bmWidth", wintypes.LONG),
-        ("bmHeight", wintypes.LONG),
-        ("bmWidthBytes", wintypes.LONG),
-        ("bmPlanes", wintypes.WORD),
-        ("bmBitsPixel", wintypes.WORD),
-        ("bmBits", ctypes.c_void_p),
-    ]
-
-
-class _BITMAPINFOHEADER(ctypes.Structure):
-    _fields_ = [
-        ("biSize", wintypes.DWORD),
-        ("biWidth", wintypes.LONG),
-        ("biHeight", wintypes.LONG),
-        ("biPlanes", wintypes.WORD),
-        ("biBitCount", wintypes.WORD),
-        ("biCompression", wintypes.DWORD),
-        ("biSizeImage", wintypes.DWORD),
-        ("biXPelsPerMeter", wintypes.LONG),
-        ("biYPelsPerMeter", wintypes.LONG),
-        ("biClrUsed", wintypes.DWORD),
-        ("biClrImportant", wintypes.DWORD),
-    ]
-
-
-def _gdi():
-    """user32 and gdi32 with the handle-sized signatures 64-bit Python needs."""
+def _user32():
+    """user32 with the handle-sized signatures 64-bit Python needs."""
     user32 = ctypes.windll.user32
-    gdi32 = ctypes.windll.gdi32
-    user32.GetCursorInfo.argtypes = [ctypes.POINTER(_CURSORINFO)]
-    user32.GetIconInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ICONINFO)]
-    user32.DrawIconEx.argtypes = [
-        wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.HANDLE,
-        ctypes.c_int, ctypes.c_int, wintypes.UINT, wintypes.HBRUSH, wintypes.UINT,
-    ]
     user32.CreateCursor.restype = wintypes.HANDLE
     user32.CreateCursor.argtypes = [
         wintypes.HINSTANCE, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
         ctypes.c_void_p, ctypes.c_void_p,
     ]
     user32.SetSystemCursor.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-    gdi32.GetObjectW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p]
-    gdi32.CreateCompatibleDC.restype = wintypes.HDC
-    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-    gdi32.CreateDIBSection.restype = wintypes.HBITMAP
-    gdi32.CreateDIBSection.argtypes = [
-        wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
-        ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD,
-    ]
-    gdi32.SelectObject.restype = wintypes.HGDIOBJ
-    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-    gdi32.DeleteDC.argtypes = [wintypes.HDC]
-    return user32, gdi32
-
-
-def pointer_image():
-    """The pointer as it looks now: a straight-alpha BGRA array and its hotspot.
-
-    ``None`` when there is no pointer on screen, as when typing or using touch
-    has hidden it. Drawn twice, over black and over white, because that is the
-    one way to recover alpha that works for every kind of cursor: per-pixel
-    alpha, old monochrome masks, and the inverting ones such as the text caret,
-    which come out white.
-    """
-    if not is_windows():
-        return None
-    import numpy as np
-
-    user32, gdi32 = _gdi()
-    info = _CURSORINFO(cbSize=ctypes.sizeof(_CURSORINFO))
-    if not user32.GetCursorInfo(ctypes.byref(info)):
-        return None
-    if not info.flags & _CURSOR_SHOWING or not info.hCursor:
-        return None
-
-    icon = _ICONINFO()
-    if not user32.GetIconInfo(info.hCursor, ctypes.byref(icon)):
-        return None
-    try:
-        bitmap = _BITMAP()
-        gdi32.GetObjectW(icon.hbmMask, ctypes.sizeof(_BITMAP), ctypes.byref(bitmap))
-        width = bitmap.bmWidth
-        # A monochrome cursor stacks its AND and XOR masks in one bitmap.
-        height = bitmap.bmHeight if icon.hbmColor else bitmap.bmHeight // 2
-        hotspot = (int(icon.xHotspot), int(icon.yHotspot))
-    finally:
-        for handle in (icon.hbmMask, icon.hbmColor):
-            if handle:
-                gdi32.DeleteObject(handle)
-    if width <= 0 or height <= 0:
-        return None
-
-    header = _BITMAPINFOHEADER(
-        biSize=ctypes.sizeof(_BITMAPINFOHEADER),
-        biWidth=width,
-        biHeight=-height,  # top-down rows
-        biPlanes=1,
-        biBitCount=32,
-    )
-    bits = ctypes.c_void_p()
-    dc = gdi32.CreateCompatibleDC(None)
-    surface = gdi32.CreateDIBSection(
-        dc, ctypes.byref(header), _DIB_RGB_COLORS, ctypes.byref(bits), None, 0
-    )
-    if not dc or not surface or not bits.value:
-        if surface:
-            gdi32.DeleteObject(surface)
-        if dc:
-            gdi32.DeleteDC(dc)
-        return None
-    previous = gdi32.SelectObject(dc, surface)
-    try:
-        size = width * height * 4
-        drawn = []
-        for background in (0x00, 0xFF):
-            ctypes.memset(bits, background, size)
-            user32.DrawIconEx(dc, 0, 0, info.hCursor, width, height, 0, None, _DI_NORMAL)
-            gdi32.GdiFlush()
-            drawn.append(
-                np.frombuffer(ctypes.string_at(bits, size), dtype=np.uint8)
-                .reshape(height, width, 4)[:, :, :3]
-                .astype(np.int32)
-            )
-    finally:
-        gdi32.SelectObject(dc, previous)
-        gdi32.DeleteObject(surface)
-        gdi32.DeleteDC(dc)
-
-    over_black, over_white = drawn
-    alpha = np.clip(255 - (over_white - over_black).max(axis=2), 0, 255)
-    colour = np.where(
-        alpha[:, :, None] > 0,
-        np.clip(over_black * 255 // np.maximum(alpha, 1)[:, :, None], 0, 255),
-        0,
-    )
-    image = np.dstack([colour, alpha]).astype(np.uint8)
-    return image, hotspot
-
-
-def pointer_position() -> tuple[int, int] | None:
-    """Where the pointer's hotspot is, in device pixels of the virtual screen."""
-    if not is_windows():
-        return None
-    point = wintypes.POINT()
-    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
-        return None
-    return point.x, point.y
+    return user32
 
 
 def hide_pointer() -> bool:
@@ -364,7 +199,7 @@ def hide_pointer() -> bool:
     """
     if not is_windows():
         return False
-    user32, _ = _gdi()
+    user32 = _user32()
     width = user32.GetSystemMetrics(13)  # SM_CXCURSOR
     height = user32.GetSystemMetrics(14)  # SM_CYCURSOR
     stride = (width + 15) // 16 * 2
