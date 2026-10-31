@@ -13,6 +13,10 @@ class _FakeWin32:
         self.hides = hides
         self.hidden = 0
         self.restored = 0
+        self.position = (10, 20)
+
+    def pointer_position(self):
+        return self.position
 
     def hide_pointer(self):
         self.hidden += 1
@@ -50,3 +54,32 @@ def test_nothing_to_restore_when_hiding_failed(fake):
     hider.begin()
     hider.end()
     assert not hider.is_hidden and stub.restored == 0
+
+
+def test_moving_the_mouse_gives_the_pointer_back(fake):
+    stub = fake()
+    hider = PointerHider()
+    hider.begin()
+    hider.watch()
+    assert hider.is_hidden and stub.restored == 0
+    stub.position = (11, 20)
+    hider.watch()
+    assert not hider.is_hidden and stub.restored == 1
+    hider.watch()
+    hider.end()
+    assert stub.restored == 1
+
+
+def test_unknown_position_is_not_a_move(fake):
+    stub = fake()
+    stub.position = None
+    hider = PointerHider()
+    hider.begin()
+    hider.watch()
+    assert hider.is_hidden
+    stub.position = (5, 5)
+    hider.watch()
+    assert hider.is_hidden
+    stub.position = (6, 5)
+    hider.watch()
+    assert not hider.is_hidden

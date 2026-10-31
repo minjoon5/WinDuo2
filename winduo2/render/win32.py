@@ -216,6 +216,16 @@ def hide_pointer() -> bool:
     return hidden
 
 
+def pointer_position() -> tuple[int, int] | None:
+    """Where the pointer is on the virtual screen, or ``None`` when unknown."""
+    if not is_windows():
+        return None
+    point = wintypes.POINT()
+    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return None
+    return (point.x, point.y)
+
+
 def restore_pointer() -> None:
     """Reload the user's cursor scheme, undoing :func:`hide_pointer`."""
     if not is_windows():

@@ -204,6 +204,7 @@ class Engine(QObject):
             return
 
         self._draw(frame)
+        self.pointer.watch()
 
         if frame.is_final:
             self._dismiss()
