@@ -333,6 +333,39 @@ class TestFrames:
         assert harness.frame is not None
         assert harness.frame.progress == pytest.approx(1.0, abs=1e-6)
 
+    def test_the_preview_sweep_opens_straight_after_it_closes(self):
+        # The open follows the close in the same run, through neutral, and
+        # reaches full strength too before the effect eases out.
+        from winduo2.app import PreviewSweep
+
+        settings = Settings(trigger_travel=8.0, full_effect_travel=40.0)
+        sweep = PreviewSweep(settings.trigger_travel, settings.full_effect_travel)
+        sweep.started_at = 0.0
+        controller = EffectController(settings)
+        now, frames = 0.0, []
+        while (travel := sweep.travel(now)) is not None:
+            controller.observe(
+                AngleSample(
+                    travel=travel,
+                    velocity=sweep.velocity_at(now),
+                    confidence=1.0,
+                    timestamp=now,
+                    at_rest=False,
+                    absolute_angle=100.0 - travel,
+                ),
+                now,
+            )
+            frames.append(controller.step(now))
+            now += STEP
+        shown = [frame for frame in frames if frame is not None]
+        first = frames.index(shown[0])
+        assert all(frame is not None for frame in frames[first:])
+        assert any(f.progress == pytest.approx(1.0) and not f.opening for f in shown)
+        assert any(f.progress == pytest.approx(1.0) and f.opening for f in shown)
+        assert shown.index(next(f for f in shown if f.opening)) > shown.index(
+            next(f for f in shown if f.progress == pytest.approx(1.0))
+        )
+
 
 class TestPolling:
     def test_polls_slowly_while_nothing_is_happening(self):

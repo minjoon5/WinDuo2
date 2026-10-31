@@ -148,7 +148,7 @@ def _run_preview(app, engine) -> int:
         engine.stop()
         app.quit()
 
-    QTimer.singleShot(5200, finish)
+    QTimer.singleShot(8800, finish)
     log.info("running the preview sweep")
     return app.exec()
 

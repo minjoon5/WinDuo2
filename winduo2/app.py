@@ -30,11 +30,12 @@ __all__ = ["Engine", "PreviewSweep"]
 
 
 class PreviewSweep:
-    """A scripted close, so the effect can be seen and tuned without a lid.
+    """A scripted close and open, so the effect can be seen and tuned without a lid.
 
     Ported from Mac Duo's preview, and the single most useful thing in this
     project for judging the look. It feeds the same path a real close feeds, so
-    what the preview shows is what a close shows.
+    what the preview shows is what a close shows. The close is followed
+    straight away by its mirror, an open, so both looks show in one run.
     """
 
     def __init__(self, trigger_travel: float, span: float) -> None:
@@ -55,21 +56,45 @@ class PreviewSweep:
         self.hold = 1.0
         self.opening = 0.6
 
+    @property
+    def half(self) -> float:
+        """How long one direction takes, out and back."""
+        return self.closing + self.hold + self.opening
+
+    @property
+    def duration(self) -> float:
+        return 2.0 * self.half
+
     def travel(self, now: float) -> float | None:
-        """Travel at this moment, or ``None`` once the sweep is over."""
+        """Travel at this moment, or ``None`` once the sweep is over.
+
+        Closing first, then the same sweep mirrored to negative travel, which is
+        how the controller reads an open. Back at rest between the two the lid
+        is still moving, so the run carries on across neutral rather than
+        ending and starting again.
+        """
         elapsed = now - self.started_at
-        if elapsed < self.closing:
-            return self.rest + (self.deep - self.rest) * (elapsed / self.closing)
-        if elapsed < self.closing + self.hold:
-            return self.deep
-        if elapsed < self.closing + self.hold + self.opening:
-            fraction = (elapsed - self.closing - self.hold) / self.opening
-            return self.deep + (self.rest - self.deep) * fraction
+        if elapsed < self.half:
+            return self._one_way(elapsed)
+        if elapsed < self.duration:
+            return -self._one_way(elapsed - self.half)
         return None
+
+    def velocity_at(self, now: float) -> float:
+        """Degrees per second, signed like travel: closing, then opening."""
+        return self.velocity if now - self.started_at < self.half else -self.velocity
 
     @property
     def velocity(self) -> float:
         return self.deep / self.closing
+
+    def _one_way(self, elapsed: float) -> float:
+        if elapsed < self.closing:
+            return self.rest + (self.deep - self.rest) * (elapsed / self.closing)
+        if elapsed < self.closing + self.hold:
+            return self.deep
+        fraction = min((elapsed - self.closing - self.hold) / self.opening, 1.0)
+        return self.deep + (self.rest - self.deep) * fraction
 
 
 class Engine(QObject):
@@ -175,10 +200,10 @@ class Engine(QObject):
         self._ensure_capture()
         # Hold the pre-warm open for the whole sweep, or the first idle tick
         # would release the capture that was just started for it.
-        self._prewarm_until = time.monotonic() + 8.0
         self._preview = PreviewSweep(
             settings.trigger_travel, settings.full_effect_travel
         )
+        self._prewarm_until = self._preview.started_at + self._preview.duration + 2.0
         self._timer.setInterval(int(1000 / 60))
 
     # --- The loop --------------------------------------------------------
@@ -226,7 +251,7 @@ class Engine(QObject):
         self.controller.observe(
             AngleSample(
                 travel=travel,
-                velocity=self._preview.velocity,
+                velocity=self._preview.velocity_at(now),
                 confidence=1.0,
                 timestamp=now,
                 at_rest=False,
