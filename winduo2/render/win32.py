@@ -13,13 +13,16 @@ three things it has no API for decide whether this effect works at all:
 Topmost is not the top, though. The pointer is drawn by the display hardware
 after composition, and the Start menu, search and the notification flyouts
 live in z-order bands above every topmost window that only a signed
-``uiAccess`` process can reach. The pointer is therefore hidden, and those
-flyouts are closed, when the effect starts.
+``uiAccess`` process can reach. The pointer is therefore hidden when the effect
+starts. Those flyouts are closed too, unless this process has ``uiAccess``: the
+installed build does, which puts its topmost windows in a band above them, so
+they stay open and are blurred with everything else.
 """
 
 from __future__ import annotations
 
 import ctypes
+import functools
 import sys
 from ctypes import wintypes
 
@@ -35,6 +38,7 @@ __all__ = [
     "hide_pointer",
     "restore_pointer",
     "close_shell_flyouts",
+    "has_ui_access",
     "MIN_BUILD_FOR_CAPTURE_EXCLUSION",
 ]
 
@@ -150,6 +154,49 @@ def windows_build() -> int:
 
 def supports_capture_exclusion() -> bool:
     return windows_build() >= MIN_BUILD_FOR_CAPTURE_EXCLUSION
+
+
+_TOKEN_QUERY = 0x0008
+_TOKEN_UI_ACCESS = 26  # TOKEN_INFORMATION_CLASS.TokenUIAccess
+
+
+@functools.cache
+def has_ui_access() -> bool:
+    """Whether Windows started this process with ``uiAccess``.
+
+    Only an executable whose manifest asks for it, that is signed by a trusted
+    certificate and that is installed under Program Files gets it; Windows
+    refuses to start one that asks and fails the other two. The token never
+    changes for the life of the process, so the answer is cached.
+    """
+    if not is_windows():
+        return False
+    advapi32 = ctypes.windll.advapi32
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)
+    ]
+    advapi32.GetTokenInformation.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(
+        kernel32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)
+    ):
+        return False
+    try:
+        value = wintypes.DWORD()
+        returned = wintypes.DWORD()
+        ok = advapi32.GetTokenInformation(
+            token, _TOKEN_UI_ACCESS, ctypes.byref(value),
+            ctypes.sizeof(value), ctypes.byref(returned),
+        )
+        return bool(ok and value.value)
+    finally:
+        kernel32.CloseHandle(token)
 
 
 # --- The pointer ---------------------------------------------------------
@@ -313,8 +360,8 @@ def _foreground_process_name() -> str:
 def close_shell_flyouts() -> bool:
     """Close Start, search or a notification flyout if one has the focus.
 
-    Being above them would need ``uiAccess``, which only a signed executable
-    installed under Program Files gets. Escape is what closes them by hand, and
+    Being above them needs ``uiAccess`` (see :func:`has_ui_access`); the caller
+    skips this when the process has it. Escape is what closes them by hand, and
     it is only sent when one of them is in front, so it can never reach an
     application. Returns True when it sent one.
     """

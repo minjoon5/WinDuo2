@@ -9,8 +9,30 @@ permissions:
   contents: write
 
 jobs:
-  exe:
+  build:
+    # Two builds from the same bundle:
+    #
+    # - portable: the single WinDuo2.exe, run from anywhere. Start, search and
+    #   quick settings are closed when the effect starts.
+    # - installer: a folder build whose manifest asks for uiAccess, installed
+    #   under Program Files by WinDuo2-Setup.exe. uiAccess puts the overlay
+    #   above those flyouts so they are blurred instead. Windows only grants it
+    #   to a signed exe, so it is signed here when the WINDOWS_CERT_PFX
+    #   (base64 .pfx) and WINDOWS_CERT_PASSWORD secrets are set; without them
+    #   it is left for packaging/windows/trust-self-signed.ps1 to sign on the
+    #   user's own machine. It is a folder, not --onefile, because a one-file
+    #   build unpacks its code into %TEMP%, which defeats the point of
+    #   requiring a location only administrators can write to.
+    strategy:
+      matrix:
+        include:
+          - variant: portable
+            layout: --onefile
+          - variant: installer
+            layout: --onedir --uac-uiaccess
     runs-on: windows-latest
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +64,7 @@ jobs:
         shell: pwsh
 
       - name: Build
-        # One file, no console window.
+        # No console window; one file or one folder, per the matrix above.
         #
         # --collect-all PyQt6 used to pull in the whole Qt distribution: Quick,
         # Qml, Quick3D, Designer, Pdf, WebEngine, Bluetooth, Sql, every
@@ -73,7 +95,7 @@ jobs:
         # copied in explicitly.
         run: >
           pyinstaller
-          --onefile
+          ${{ matrix.layout }}
           --noconsole
           --name WinDuo2
           --icon winduo2/ui/icon.ico
@@ -123,28 +145,98 @@ jobs:
           winduo2/__main__.py
 
       - name: Check it starts
+        if: matrix.variant == 'portable'
         # --version exits before any window, sensor, or GPU work, so it is a real
         # check that the bundle imports cleanly on a machine with no dev setup.
         run: ./dist/WinDuo2.exe --version
 
+      - name: Check the manifest asks for uiAccess
+        if: matrix.variant == 'installer'
+        # This exe cannot be run here: Windows refuses a uiAccess exe outside
+        # Program Files. The portable build checks the same bundle imports.
+        run: |
+          $bytes = [IO.File]::ReadAllBytes("dist/WinDuo2/WinDuo2.exe")
+          $text = [Text.Encoding]::ASCII.GetString($bytes)
+          if ($text -notmatch 'uiAccess="true"') { throw "uiAccess is missing from the manifest" }
+          Write-Host "manifest asks for uiAccess"
+        shell: pwsh
+
+      - name: Prepare signing
+        if: matrix.variant == 'installer' && env.HAS_SIGNING_CERT == 'true'
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+          "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
+          "SIGNING_PFX=$pfx" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Sign the exe
+        if: matrix.variant == 'installer' && env.HAS_SIGNING_CERT == 'true'
+        env:
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: >
+          & $env:SIGNTOOL sign /fd SHA256 /f $env:SIGNING_PFX /p $env:WINDOWS_CERT_PASSWORD
+          /tr http://timestamp.digicert.com /td SHA256 dist/WinDuo2/WinDuo2.exe
+        shell: pwsh
+
+      - name: Build the installer
+        if: matrix.variant == 'installer'
+        run: |
+          choco install innosetup -y --no-progress
+          $version = python -c "import winduo2; print(winduo2.__version__)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging/windows/WinDuo2.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+        shell: pwsh
+
+      - name: Sign the installer
+        if: matrix.variant == 'installer' && env.HAS_SIGNING_CERT == 'true'
+        env:
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: >
+          & $env:SIGNTOOL sign /fd SHA256 /f $env:SIGNING_PFX /p $env:WINDOWS_CERT_PASSWORD
+          /tr http://timestamp.digicert.com /td SHA256 dist/WinDuo2-Setup.exe
+        shell: pwsh
+
       - uses: actions/upload-artifact@v4
         with:
-          name: WinDuo2-exe
-          path: dist/WinDuo2.exe
+          name: WinDuo2-${{ matrix.variant }}
+          path: ${{ matrix.variant == 'portable' && 'dist/WinDuo2.exe' || 'dist/WinDuo2-Setup.exe' }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/WinDuo2.exe
+          files: |
+            dist/WinDuo2.exe
+            dist/WinDuo2-Setup.exe
           generate_release_notes: true
           body: |
-            Download `WinDuo2.exe` below. Nothing else to install.
-
-            Windows 10 version 2004 or later, on a laptop with a lid
-            accelerometer or hinge angle sensor, such as a convertible. No
+            Two ways to run it, both for Windows 10 version 2004 or later on a
+            laptop with a hinge angle sensor, such as a convertible. No
             calibration: WinDuo2 sits in the notification area and the effect
             follows the lid.
 
-            Windows SmartScreen will warn about an unrecognised app, because this
-            build is unsigned. Choose **More info**, then **Run anyway**.
+            - **`WinDuo2.exe`**: one file, nothing to install. Start, search
+              and quick settings close when the effect starts.
+            - **`WinDuo2-Setup.exe`**: installs under Program Files with
+              uiAccess, so Start, search and quick settings stay open and are
+              blurred too. Windows only allows that for a signed exe; if this
+              release is unsigned, run `trust-self-signed.ps1` from the install
+              folder once after each install, as described in the README.
+
+            Windows SmartScreen may warn about an unrecognised app. Choose
+            **More info**, then **Run anyway**.

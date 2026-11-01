@@ -11,7 +11,13 @@ from XML because ``schtasks`` offers no switches for the settings that matter
 here: Task Scheduler's defaults would stop the app after three days, refuse to
 start it on battery, and run it below normal priority. Should Windows refuse to
 register it, the ``Run`` entry is written instead, so the setting still works,
-only more slowly. Turning the setting off removes both. On Linux the install
+only more slowly. Turning the setting off removes both.
+
+The installed build has ``uiAccess``, and Windows refuses to start such an
+executable through a plain ``CreateProcess``, which is what Task Scheduler
+uses; the task would fail with "The requested operation requires elevation".
+Going through the shell lets Windows grant it as it does for a double-click, so
+that build's task starts it through ``ShellExec_RunDLL`` instead. On Linux the install
 script starts WinDuo2 from the Hyprland config instead, so everything here is a
 no-op there.
 """
@@ -51,12 +57,25 @@ def _program() -> tuple[Path, list[str]]:
     if getattr(sys, "frozen", False):
         # The packaged WinDuo2.exe. Written fresh on every start, so moving the
         # file and running it once from its new place keeps the entry working.
+        if _has_ui_access():
+            return _rundll32(), ["shell32.dll,ShellExec_RunDLL", f'"{executable}"', FLAG]
         return executable, [FLAG]
     # From source: pythonw rather than python, so no console window opens.
     windowed = executable.with_name("pythonw.exe")
     if windowed.exists():
         executable = windowed
     return executable, ["-m", "winduo2", FLAG]
+
+
+def _has_ui_access() -> bool:
+    from winduo2.render import win32
+
+    return win32.has_ui_access()
+
+
+def _rundll32() -> Path:
+    system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+    return Path(system_root) / "System32" / "rundll32.exe"
 
 
 def command() -> str:

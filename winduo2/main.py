@@ -131,7 +131,14 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat.start(250)
     heartbeat.timeout.connect(lambda: None)
 
-    log.info("WinDuo2 %s ready%s", __version__, _since_boot())
+    from winduo2.render import win32
+
+    log.info(
+        "WinDuo2 %s ready%s%s",
+        __version__,
+        _since_boot(),
+        ", with uiAccess" if win32.has_ui_access() else "",
+    )
     code = app.exec()
     engine.stop()
     return code

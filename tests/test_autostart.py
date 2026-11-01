@@ -13,6 +13,18 @@ def test_frozen_exe_runs_itself(monkeypatch, tmp_path):
     assert autostart.command() == f'"{exe}" --autostart'
 
 
+def test_ui_access_exe_starts_through_the_shell(monkeypatch, tmp_path):
+    # Task Scheduler's plain CreateProcess cannot start a uiAccess executable.
+    exe = tmp_path / "Program Files" / "WinDuo2.exe"
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(autostart, "_has_ui_access", lambda: True)
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+    executable, arguments = autostart._program()
+    assert executable.name == "rundll32.exe"
+    assert arguments == ["shell32.dll,ShellExec_RunDLL", f'"{exe}"', autostart.FLAG]
+
+
 def test_source_install_prefers_pythonw(monkeypatch, tmp_path):
     (tmp_path / "pythonw.exe").touch()
     monkeypatch.setattr(sys, "executable", str(tmp_path / "python.exe"))

@@ -380,11 +380,14 @@ class Engine(QObject):
             # back into itself. One held frame still looks right.
             log.info("no capture exclusion available, holding a single frame")
 
-        # Start and the other shell flyouts sit above any window this app may
-        # make, and the pointer above all of them, so neither would be covered
-        # by the effect. The flyouts are closed, as the lid closing would do
-        # anyway, and the pointer is hidden until the effect ends.
-        win32.close_shell_flyouts()
+        # Start and the other shell flyouts sit above any window an ordinary
+        # app may make, and the pointer above all of them, so neither would be
+        # covered by the effect. Without uiAccess the flyouts are closed, as the
+        # lid closing would do anyway; with it the overlay is above them and
+        # they are left open to blur. The pointer is hidden until the effect
+        # ends either way.
+        if not win32.has_ui_access():
+            win32.close_shell_flyouts()
         self.pointer.begin()
 
         self.changed.emit()

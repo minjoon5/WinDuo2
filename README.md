@@ -14,6 +14,14 @@ Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [Pol
 
 **Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/WinDuo2/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
 
+**To blur Start and quick settings too:** install with `WinDuo2-Setup.exe` from the same release instead. It installs under Program Files with *uiAccess*, which puts the effect above Start, search, the notification centre and quick settings, so they stay open and blur with everything else instead of closing. Windows only grants uiAccess to an exe that is signed by a certificate the PC trusts and installed under Program Files, and refuses to start it otherwise. If the release is not signed, sign your installed copy with a certificate made on your own PC, from an administrator PowerShell, once after every install or update:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\WinDuo2\trust-self-signed.ps1"
+```
+
+It creates a code signing certificate, signs `WinDuo2.exe` with it, trusts only the certificate's public half on this PC, and deletes the private key, so nothing else can be signed with it. `-Remove` takes it back out. Until it has run, the installed WinDuo2 will not start.
+
 **From source:**
 
 ```sh
@@ -44,7 +52,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 - **It needs a hinge angle sensor.** Laptops without one, which includes most ordinary clamshells, are not supported, and WinDuo2 says so in the tray. The lid accelerometer alone is no longer used on Windows.
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
-- **Start, search and the notification flyouts close when the effect starts.** Windows keeps them in a layer above every window an ordinary app can make, so they cannot be blurred in place; closing them is what the lid closing would do anyway. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
+- **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see Install). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
 
