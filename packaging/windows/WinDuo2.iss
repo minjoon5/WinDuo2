@@ -44,6 +44,7 @@ RestartApplications=no
 [Files]
 Source: "..\..\dist\WinDuo2\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "trust-self-signed.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "make-signing-cert.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\WinDuo2"; Filename: "{app}\WinDuo2.exe"

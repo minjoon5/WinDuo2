@@ -18,9 +18,11 @@ jobs:
     #   under Program Files by WinDuo2-Setup.exe. uiAccess puts the overlay
     #   above those flyouts so they are blurred instead. Windows only grants it
     #   to a signed exe, so it is signed here when the WINDOWS_CERT_PFX
-    #   (base64 .pfx) and WINDOWS_CERT_PASSWORD secrets are set; without them
-    #   it is left for packaging/windows/trust-self-signed.ps1 to sign on the
-    #   user's own machine. It is a folder, not --onefile, because a one-file
+    #   (base64 .pfx) and WINDOWS_CERT_PASSWORD secrets are set, for example
+    #   from packaging/windows/make-signing-cert.ps1; a PC that trusts that
+    #   certificate once runs every later release. Without them it is left
+    #   for packaging/windows/trust-self-signed.ps1 to sign on the user's own
+    #   machine after each install. It is a folder, not --onefile, because a one-file
     #   build unpacks its code into %TEMP%, which defeats the point of
     #   requiring a location only administrators can write to.
     strategy:
@@ -165,9 +167,20 @@ jobs:
         if: matrix.variant == 'installer' && env.HAS_SIGNING_CERT == 'true'
         env:
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          # A self-signed certificate from make-signing-cert.ps1 is its own
+          # root. Trusting it on this throwaway runner lets signtool build the
+          # chain and the verify step below check the signature.
+          $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx, $env:WINDOWS_CERT_PASSWORD)
+          if ($cert.Subject -eq $cert.Issuer) {
+            $store = [Security.Cryptography.X509Certificates.X509Store]::new("Root", "LocalMachine")
+            $store.Open("ReadWrite")
+            $store.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($cert.RawData))
+            $store.Close()
+          }
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
             Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
@@ -181,7 +194,9 @@ jobs:
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: >
           & $env:SIGNTOOL sign /fd SHA256 /f $env:SIGNING_PFX /p $env:WINDOWS_CERT_PASSWORD
-          /tr http://timestamp.digicert.com /td SHA256 dist/WinDuo2/WinDuo2.exe
+          /tr http://timestamp.digicert.com /td SHA256 dist/WinDuo2/WinDuo2.exe;
+          & $env:SIGNTOOL verify /pa dist/WinDuo2/WinDuo2.exe;
+          if ($LASTEXITCODE -ne 0) { throw "the signature does not verify" }
         shell: pwsh
 
       - name: Build the installer
@@ -234,9 +249,9 @@ jobs:
               and quick settings close when the effect starts.
             - **`WinDuo2-Setup.exe`**: installs under Program Files with
               uiAccess, so Start, search and quick settings stay open and are
-              blurred too. Windows only allows that for a signed exe; if this
-              release is unsigned, run `trust-self-signed.ps1` from the install
-              folder once after each install, as described in the README.
+              blurred too. Windows only allows that for an exe signed by a
+              certificate the PC trusts; see the README for trusting the
+              signing certificate once, or for signing an unsigned build.
 
             Windows SmartScreen may warn about an unrecognised app. Choose
             **More info**, then **Run anyway**.

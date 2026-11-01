@@ -13,7 +13,8 @@
       4. Deletes the private key, so nothing else can ever be signed with it.
 
     Run it again after every update: the installer replaces the exe, and the
-    new one is unsigned until you do. Each run makes a fresh certificate; old
+    new one is unsigned until you do. To avoid that, have CI sign every build
+    with one certificate instead; see make-signing-cert.ps1. Each run makes a fresh certificate; old
     ones are removed first.
 
     Run from an elevated PowerShell:
@@ -33,6 +34,14 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
     throw "Run this from an elevated PowerShell (Run as administrator)."
+}
+
+if (-not $Remove -and (Test-Path $Exe)) {
+    $existing = Get-AuthenticodeSignature -FilePath $Exe
+    if ($existing.Status -eq "Valid" -and $existing.SignerCertificate.Subject -ne $Subject) {
+        Write-Host "$Exe is already signed by a certificate this PC trusts. Nothing to do."
+        return
+    }
 }
 
 foreach ($store in "My", "Root", "TrustedPublisher") {
