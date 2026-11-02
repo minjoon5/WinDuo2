@@ -312,6 +312,22 @@ class SettingsWindow(QWidget):
         )
         layout.addWidget(self._render_width)
 
+        self._direct3d = QCheckBox("Draw with Direct3D")
+        self._direct3d.toggled.connect(
+            lambda v: self._apply(renderer="direct3d" if v else "opengl")
+        )
+        layout.addWidget(self._direct3d)
+        layout.addWidget(
+            help_label(
+                "Keeps the whole effect on the graphics card, which is smoother. "
+                "Untick it to go back to the OpenGL renderer if the effect "
+                "misbehaves."
+            )
+        )
+        from winduo2.render import native
+
+        self._direct3d.setEnabled(native.available())
+
         layout.addStretch(1)
         area.setWidget(content)
         self._body = content
@@ -371,6 +387,7 @@ class SettingsWindow(QWidget):
             self._settle.set_value(settings.neutral_settle_seconds)
             self._hold.set_value(settings.partial_hold_seconds)
             self._render_width.set_value(settings.render_width_cap or 2000)
+            self._direct3d.setChecked(settings.renderer == "direct3d")
         finally:
             self._applying = False
 

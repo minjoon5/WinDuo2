@@ -17,6 +17,9 @@ __all__ = ["Settings", "Store"]
 
 CONFIG_PATH = APP_DIR / "config.json"
 
+#: The renderers ``Settings.renderer`` may name, the default first.
+RENDERERS = ("direct3d", "opengl")
+
 
 @dataclass
 class Settings:
@@ -124,6 +127,9 @@ class Settings:
     #: receding and blurring while the effect runs, so full resolution buys
     #: very little and costs a lot of memory bandwidth. 0 means native.
     render_width_cap: int = 2000
+    #: "direct3d" draws with the native renderer when its DLL is present and
+    #: starts; "opengl" always uses the Qt/OpenGL one.
+    renderer: str = "direct3d"
 
     # --- Housekeeping ----------------------------------------------------
     #: On from the start: the effect is only any use if WinDuo2 is already
@@ -154,6 +160,8 @@ class Settings:
         out.partial_hold_seconds = _clamp(out.partial_hold_seconds, 0.4, 30.0)
         out.confidence_floor = _clamp(out.confidence_floor, 0.0, 0.95)
         out.render_width_cap = int(_clamp(out.render_width_cap, 0, 7680))
+        if out.renderer not in RENDERERS:
+            out.renderer = RENDERERS[0]
         return out
 
 

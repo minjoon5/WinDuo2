@@ -20,7 +20,7 @@ from winduo2.angle.sensor import SensorAngleSource
 from winduo2.config import Store
 from winduo2.effect.controller import IDLE_INTERVAL, OPEN_ANGLE, EffectController
 from winduo2.log import get_logger
-from winduo2.render import win32
+from winduo2.render import native, win32
 from winduo2.render.capture import CaptureError, ScreenCapture
 from winduo2.render.framestats import FrameStats
 from winduo2.render.overlay import DepthOverlay, FrameParams
@@ -135,7 +135,7 @@ class Engine(QObject):
         self.store = store
         self.controller = EffectController(store.settings)
         self.sensor = SensorAngleSource(store.settings)
-        self.overlay = DepthOverlay()
+        self.overlay = self._wanted_overlay()
         self.pointer = PointerHider()
         self.capture: ScreenCapture | None = None
         self.lid = LidSwitch(self._on_lid_change)
@@ -487,6 +487,15 @@ class Engine(QObject):
         self._collect_capture()
         if self.capture is not None and self.capture.is_running:
             return True
+        make_capture = getattr(self.overlay, "make_capture", None)
+        if make_capture is not None:
+            # The native renderer duplicates the desktop itself, and starting
+            # that is quick, so there is no thread to wait on.
+            if self.capture is not None:
+                self.capture.stop()
+            self.capture = make_capture()
+            self.capture.start()
+            return self.capture.is_running
         if wait:
             thread = self._capture_thread
             if thread is not None:
@@ -598,8 +607,36 @@ class Engine(QObject):
             return
         self._screen_size = _native_size()
         picture = _picture_size(self._screen_size, self.store.settings.render_width_cap)
-        if not self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
-            self._problem = "The graphics driver would not start the renderer."
+        if self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
+            log.info("drawing with the %s renderer", _renderer_name(self.overlay))
+            return
+        if isinstance(self.overlay, native.NativeOverlay):
+            # The native renderer could not start here (no DLL support for this
+            # display, a rotated screen, a driver refusing): OpenGL instead.
+            self._use_overlay(DepthOverlay())
+            if self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
+                log.info("drawing with the %s renderer", _renderer_name(self.overlay))
+                return
+        self._problem = "The graphics driver would not start the renderer."
+
+    def _wanted_overlay(self):
+        """The renderer the settings ask for, where it is available."""
+        self._renderer_setting = self.store.settings.renderer
+        if self.store.settings.renderer == "direct3d" and native.available():
+            return native.NativeOverlay()
+        return DepthOverlay()
+
+    def _use_overlay(self, overlay) -> None:
+        """Swap renderers. Only between runs: the old one is torn down."""
+        self._release_capture()
+        self.overlay.destroy()
+        self.overlay = overlay
+        self.overlay.attach_stats(self._stats)
+
+    def _rebuild_overlay(self) -> None:
+        """Start the renderer afresh, as the settings and the display now ask."""
+        self._use_overlay(self._wanted_overlay())
+        self._warm_overlay()
 
     def _dismiss(self) -> None:
         """Fade the overlay out and give the pointer back."""
@@ -644,6 +681,11 @@ class Engine(QObject):
             self.controller.suspend()
             self.controller.resume()
             self._teardown_effect()
+        if self._running and self.store.settings.renderer != self._renderer_setting:
+            self.controller.suspend()
+            self._teardown_effect()
+            self._rebuild_overlay()
+            self.controller.resume()
         self.changed.emit()
 
     def _screen_changed(self) -> None:
@@ -651,6 +693,11 @@ class Engine(QObject):
         self.controller.suspend()
         self._teardown_effect()
         self._note_screen()
+        if self._running:
+            # Both renderers are sized to the display; the native one is also
+            # tied to its output, and a rotated display may have pushed it
+            # aside for OpenGL. Starting afresh settles all of that.
+            self._rebuild_overlay()
         self.controller.resume()
         self.changed.emit()
 
@@ -658,6 +705,10 @@ class Engine(QObject):
         self._screen_size = _native_size()
         screen = QGuiApplication.primaryScreen()
         self._pacer.set_refresh_rate(screen.refreshRate() if screen is not None else None)
+
+
+def _renderer_name(overlay) -> str:
+    return "Direct3D 11" if isinstance(overlay, native.NativeOverlay) else "OpenGL"
 
 
 def _native_size() -> tuple[float, float]:

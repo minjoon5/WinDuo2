@@ -44,6 +44,12 @@ The angle comes from the first of these the laptop offers:
 
 Whenever the lid holds still, that position becomes zero, and the effect runs on movement away from it. A lid that stops partway becomes the new zero, so the effect eases out on its own.
 
+## How it draws
+
+The released app draws with a native Direct3D 11 renderer (`native/winduo2_native.cpp`). The screen is captured with Desktop Duplication and never leaves the graphics card: it is scaled, its blur levels are built and the effect is drawn there, and the overlay is a DirectComposition surface that Windows composes directly, with fades that Windows runs by itself. It draws at the display's own refresh rate, 120 frames a second on a 120 Hz panel.
+
+The OpenGL renderer it replaced is still there. WinDuo2 falls back to it if the native renderer cannot start, for example on a rotated screen, and *Draw with Direct3D* in the settings switches between them. After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `effect run:` line with the frame rate reached, how many frames missed their refresh, and where the time went.
+
 ## Known limits
 
 - **It needs a hinge angle sensor.** Laptops without one, which includes most ordinary clamshells, are not supported, and WinDuo2 says so in the tray. The lid accelerometer alone is no longer used on Windows.
@@ -55,3 +61,5 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 ## Contributing
 
 `pip install -e ".[dev]"` then `pytest`. The tests need no sensor or lid.
+
+To build the native renderer, with Visual Studio's C++ tools and CMake, run `native/build.ps1`; it puts `winduo2_native.dll` in `winduo2/render/`. Without it a source install draws with OpenGL. With it, `pytest` also runs the renderer's self-test, which compiles every shader and draws real frames on WARP, Windows' software renderer, with no GPU needed.

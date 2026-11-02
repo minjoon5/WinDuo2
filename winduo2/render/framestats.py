@@ -73,6 +73,11 @@ class FrameStats:
         if self.active:
             self.paints.append(seconds)
 
+    def present_took(self, seconds: float) -> None:
+        """A renderer that presents synchronously says how long it took."""
+        if self.active:
+            self.presents.append(seconds)
+
     def presented(self, now: float) -> None:
         """Qt reports the last handed-over frame shown."""
         if self.active and self._submitted_at is not None:

@@ -44,10 +44,19 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Build the native renderer
+        run: ./native/build.ps1
+        shell: pwsh
+
       - name: Install
         run: |
           pip install -e .
           pip install pyinstaller==6.11.1
+
+      - name: Check the native renderer draws
+        # Compiles every shader and draws real frames on WARP. A release whose
+        # renderer would fall back to OpenGL on every machine fails here.
+        run: python -c "from winduo2.render import native; ok, why = native.selftest(); print(why); raise SystemExit(0 if ok else 1)"
 
       - name: Remove OpenCV's unused video-file decoder before packaging
         # opencv_videoio_ffmpeg is ~29 MB and is only consulted by
@@ -105,6 +114,7 @@ jobs:
           --add-data winduo2/ui/icon.png:winduo2/ui
           --add-data winduo2/ui/check.png:winduo2/ui
           --add-data winduo2/ui/check@2x.png:winduo2/ui
+          --add-binary winduo2/render/winduo2_native.dll:winduo2/render
           --collect-submodules PyQt6.QtCore
           --collect-submodules PyQt6.QtGui
           --collect-submodules PyQt6.QtWidgets

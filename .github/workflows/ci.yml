@@ -21,6 +21,12 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
 
+      - name: Build the native renderer
+        # The tests load it and run its self-test on WARP, which compiles
+        # every shader and draws real frames with no GPU or display.
+        run: ./native/build.ps1
+        shell: pwsh
+
       - name: Install
         run: pip install -e ".[dev]"
 
