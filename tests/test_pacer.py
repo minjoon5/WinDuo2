@@ -10,9 +10,10 @@ import pytest
 from winduo2.render.pacer import next_deadline, refresh_period
 
 
-def test_refresh_period_uses_the_reported_rate():
-    assert refresh_period(120.0) == pytest.approx(1 / 120)
+def test_refresh_period_is_the_panels_own():
     assert refresh_period(59.94) == pytest.approx(1 / 59.94)
+    assert refresh_period(120.0) == pytest.approx(1 / 120)
+    assert refresh_period(144.0) == pytest.approx(1 / 144)
 
 
 @pytest.mark.parametrize("hz", [None, 0.0, 5.0, 1000.0])
@@ -51,7 +52,6 @@ def test_timer_pacer_ticks_at_about_the_refresh_rate():
     app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])
     ticks: list[float] = []
     pacer = FramePacer(lambda: ticks.append(time.monotonic()), refresh_hz=60.0)
-    pacer._dwm_ok = False  # The timer path, which is what non-Windows uses.
     loop = QEventLoop()
     QTimer.singleShot(500, loop.quit)
     pacer.start()

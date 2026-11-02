@@ -21,6 +21,7 @@ from winduo2.effect.controller import IDLE_INTERVAL, EffectController
 from winduo2.log import get_logger
 from winduo2.render import win32
 from winduo2.render.capture import CaptureError, ScreenCapture
+from winduo2.render.framestats import FrameStats
 from winduo2.render.overlay import DepthOverlay, FrameParams
 from winduo2.render.pacer import FramePacer
 from winduo2.render.pointer import PointerHider
@@ -135,6 +136,8 @@ class Engine(QObject):
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._timer.timeout.connect(self._tick)
         self._pacer = FramePacer(self._tick)
+        self._stats = FrameStats()
+        self.overlay.attach_stats(self._stats)
         self._preview: PreviewSweep | None = None
         self._problem = ""
         self._screen_size = (0.0, 0.0)
@@ -251,10 +254,15 @@ class Engine(QObject):
             self._update_prewarm(now)
             return
 
-        if not self.overlay.is_visible and not self._present():
-            return
+        if not self.overlay.is_visible:
+            if not self._present():
+                return
+            self._stats.begin(self._pacer.period)
 
+        started = time.perf_counter()
         self._draw(frame)
+        finished = time.perf_counter()
+        self._stats.frame(finished, finished - started, self.overlay.last_upload)
         self.pointer.watch()
 
         if frame.is_final:
@@ -436,10 +444,17 @@ class Engine(QObject):
         """Fade the overlay out and give the pointer back."""
         self.overlay.dismiss(animated=True)
         self.pointer.end()
+        self._report_run()
+
+    def _report_run(self) -> None:
+        """How smoothly the run that just ended was drawn, in the log."""
+        if self._stats.active:
+            log.info("effect run: %s", self._stats.summary())
 
     def _teardown_effect(self) -> None:
         self.overlay.dismiss(animated=False)
         self.pointer.end()
+        self._report_run()
         self._release_capture()
         self._preview = None
 

@@ -157,6 +157,9 @@ class _DepthView(QOpenGLWidget):
         self._params: FrameParams | None = None
         self._has_picture = False
         self._failed = False
+        #: Where paint and present times go; set by the engine, may be None.
+        self.stats = None
+        self.frameSwapped.connect(self._on_frame_swapped)
 
 
     # --- Setup -----------------------------------------------------------
@@ -198,13 +201,16 @@ class _DepthView(QOpenGLWidget):
         Arc graphics ``paintGL`` never ran, so no picture arrived, so the
         window never faded in, and the effect stayed invisible with no error.
         """
+        self.last_upload = None
         if frame is not None:
             if self._program is not None and self.isValid():
                 self.makeCurrent()
                 try:
                     if getattr(self, "_texture_dirty", False):
                         self._allocate_texture()
+                    started = time.perf_counter()
                     self._upload(frame)
+                    self.last_upload = time.perf_counter() - started
                 finally:
                     self.doneCurrent()
             else:
@@ -267,7 +273,19 @@ class _DepthView(QOpenGLWidget):
         GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
         self._texture_dirty = False
 
+    def _on_frame_swapped(self) -> None:
+        if self.stats is not None:
+            self.stats.presented(time.perf_counter())
+
     def paintGL(self) -> None:  # noqa: N802 - Qt naming
+        started = time.perf_counter()
+        try:
+            self._paint()
+        finally:
+            if self.stats is not None:
+                self.stats.painted(time.perf_counter() - started)
+
+    def _paint(self) -> None:
         if self._failed or self._program is None:
             return
         if getattr(self, "_texture_dirty", False):
@@ -547,9 +565,22 @@ class DepthOverlay:
         self._raised_at = time.monotonic()
         return True
 
+    def attach_stats(self, stats) -> None:
+        """Have the view report paint and present times to ``stats``."""
+        self._stats = stats
+        if self._view is not None:
+            self._view.stats = stats
+
+    @property
+    def last_upload(self) -> float | None:
+        """Seconds the last submit spent uploading a new picture, None if none came."""
+        return getattr(self._view, "last_upload", None) if self._view is not None else None
+
     def submit(self, frame: np.ndarray | None, params: FrameParams) -> None:
         if self._view is None or not self._shown:
             return
+        if self._view.stats is None:
+            self._view.stats = getattr(self, "_stats", None)
         now = time.monotonic()
         if self._window is not None and now - self._raised_at >= self.RAISE_INTERVAL:
             win32.raise_topmost(self._window)
