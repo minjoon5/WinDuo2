@@ -565,6 +565,14 @@ class DepthOverlay:
         self._raised_at = time.monotonic()
         return True
 
+    @property
+    def picture_size(self) -> tuple[int, int] | None:
+        """The captured-picture size the overlay is set up for, if it is."""
+        if self._configured is None:
+            return None
+        width, height = self._configured[1]
+        return (int(width), int(height))
+
     def attach_stats(self, stats) -> None:
         """Have the view report paint and present times to ``stats``."""
         self._stats = stats

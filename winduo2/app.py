@@ -8,6 +8,7 @@ or a dropped capture backend cannot leave the effect stuck on screen.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
@@ -17,7 +18,7 @@ from winduo2.angle.estimator import AngleSample
 from winduo2.angle.lidswitch import LidSwitch
 from winduo2.angle.sensor import SensorAngleSource
 from winduo2.config import Store
-from winduo2.effect.controller import IDLE_INTERVAL, EffectController
+from winduo2.effect.controller import IDLE_INTERVAL, OPEN_ANGLE, EffectController
 from winduo2.log import get_logger
 from winduo2.render import win32
 from winduo2.render.capture import CaptureError, ScreenCapture
@@ -116,6 +117,11 @@ class Engine(QObject):
     #: session open all day.
     PREWARM_LINGER = 2.0
 
+    #: A frame held over a shut lid is dropped once the lid has been open this
+    #: long without the reopening run starting, so it can never be left
+    #: covering the screen.
+    HOLD_AFTER_OPEN = 2.0
+
     #: While the pacer drives frames, the timer only fires if it falls silent
     #: this long, as it does when the panel turns off with the lid shut.
     BACKSTOP_MS = 50
@@ -143,6 +149,18 @@ class Engine(QObject):
         self._screen_size = (0.0, 0.0)
         self._running = False
         self._prewarm_until = 0.0
+        # Capture starts on a thread of its own; see _ensure_capture.
+        self._capture_thread: threading.Thread | None = None
+        self._capture_result: ScreenCapture | CaptureError | None = None
+        self._capture_error = False
+        # The last frame of a close, held on screen over a shut lid; see
+        # _hold_for_reopening. The two lid fields are written by the lid
+        # switch thread and only read here.
+        self._held = False
+        self._held_at = 0.0
+        self._held_open_since = 0.0
+        self._shut_pending = False
+        self._lid_opened_at = 0.0
         self._unsubscribe = store.subscribe(self._settings_changed)
 
     # --- Lifecycle -------------------------------------------------------
@@ -210,7 +228,7 @@ class Engine(QObject):
         # of seconds while the duplication backend hands over its first frame,
         # and a sweep whose clock started before that wait would be half over by
         # the time anything could be drawn.
-        self._ensure_capture()
+        self._ensure_capture(wait=True)
         # Hold the pre-warm open for the whole sweep, or the first idle tick
         # would release the capture that was just started for it.
         self._preview = PreviewSweep(
@@ -246,17 +264,35 @@ class Engine(QObject):
         else:
             self.controller.observe(self.sensor.latest(), now)
 
+        if self._shut_pending:
+            # Before stepping: the run was abandoned when the switch reported
+            # shut, and the frame on screen is the one to hold.
+            self._shut_pending = False
+            self._hold_for_reopening(now)
+
         frame = self.controller.step(now)
 
         if frame is None:
-            if self.overlay.is_visible:
+            if self.overlay.is_visible and (not self._held or self._hold_expired(now)):
+                self._held = False
                 self._dismiss()
+            if self._held and self._lid_opened_at > self._held_at:
+                # The lid is opening: have the capture coming up now, while the
+                # held frame covers the screen, rather than once the run starts.
+                self._prewarm_until = max(self._prewarm_until, now + self.PREWARM_LINGER)
             self._update_prewarm(now)
             return
 
         if not self.overlay.is_visible:
             if not self._present():
                 return
+            self._stats.begin(self._pacer.period)
+        elif self._held:
+            # The lid opened and the close plays backwards from the held frame,
+            # which was on screen from the moment the display came back.
+            self._held = False
+            log.info("reopening from the frame held over the shut lid")
+            self.pointer.begin()
             self._stats.begin(self._pacer.period)
 
         started = time.perf_counter()
@@ -331,10 +367,56 @@ class Engine(QObject):
         # itself until it went black.
         live = settings.live_picture and self.overlay.excludes_itself_from_capture
         wants_frame = live or not self.overlay.has_picture
-        new_frame = (
-            self.capture.take() if self.capture is not None and wants_frame else None
-        )
+        # A run carried on from a frame held over a shut lid starts before its
+        # capture is back; the held picture is drawn until it is. A capture at
+        # some other size than the overlay was set up for, as after a display
+        # change, is left alone rather than written past the texture.
+        capture = self.capture if self._ensure_capture() else None
+        if capture is not None and tuple(capture.size) != self.overlay.picture_size:
+            capture = None
+        new_frame = capture.take() if capture is not None and wants_frame else None
         self.overlay.submit(new_frame, params)
+
+    # --- Holding a frame over a shut lid ------------------------------------
+
+    def _hold_for_reopening(self, now: float) -> None:
+        """The lid shut mid-effect: leave its last frame up instead of fading.
+
+        The display comes back on the instant the lid opens, before the sensor
+        has seen it move, and the capture needs a moment to restart after the
+        panel was off. Faded out and started afresh, the effect missed those
+        first frames, and the lock screen showed sharp before the reopening
+        caught up. The last frame of a close is the picture leaned back, blurred
+        and dimmed, which is exactly where the reopening starts, so it stays
+        up, and the reopening carries on from it.
+        """
+        if not (self.overlay.is_visible and self.overlay.has_picture):
+            return
+        self._held = True
+        self._held_at = now
+        self._held_open_since = 0.0
+        log.info("lid shut: holding the last frame for when it opens")
+        self._report_run()
+        self.pointer.end()
+        # The panel is off; the capture has nothing to read until it is back.
+        self._prewarm_until = 0.0
+        self._release_capture()
+
+    def _hold_expired(self, now: float) -> bool:
+        """Whether the held frame has outstayed an open lid with no reopening."""
+        opened = (
+            self._lid_opened_at > self._held_at
+            or self.controller.absolute_angle >= OPEN_ANGLE
+        )
+        if not opened:
+            self._held_open_since = 0.0
+            return False
+        if not self._held_open_since:
+            self._held_open_since = now
+        if now - self._held_open_since < self.HOLD_AFTER_OPEN:
+            return False
+        log.info("the lid opened but no reopening followed; dropping the held frame")
+        return True
 
     # --- Pre-warming -----------------------------------------------------
 
@@ -366,30 +448,81 @@ class Engine(QObject):
         else:
             self._release_capture()
 
-    def _ensure_capture(self) -> bool:
+    def _ensure_capture(self, wait: bool = False) -> bool:
+        """Whether the capture is running, starting it if it is not.
+
+        Starting it can take seconds: Desktop Duplication waits for its first
+        frame, and after the panel has been off it first recovers from losing
+        access. Done on the Qt thread, that froze the effect for as long, so it
+        happens on a thread of its own and this returns False until it is up.
+        ``wait`` starts it here instead, for the preview, which times its sweep
+        from when the capture is ready.
+        """
+        self._collect_capture()
         if self.capture is not None and self.capture.is_running:
             return True
+        if wait:
+            thread = self._capture_thread
+            if thread is not None:
+                thread.join()
+            else:
+                self._start_capture()
+            self._collect_capture()
+            return self.capture is not None and self.capture.is_running
+        if self._capture_thread is None:
+            self._capture_thread = threading.Thread(
+                target=self._start_capture, name="winduo2-capture-start", daemon=True
+            )
+            self._capture_thread.start()
+        return False
+
+    def _start_capture(self) -> None:
+        """Start a capture and leave it, or why it failed, for _collect_capture."""
         try:
             capture = ScreenCapture(
                 monitor=0, fps=60, width_cap=self.store.settings.render_width_cap
             )
             capture.start()
         except CaptureError as error:
-            self._problem = str(error)
-            log.warning("could not start capture: %s", error)
+            self._capture_result = error
+        except Exception as error:  # a driver can fail in ways of its own
+            log.debug("capture start failed", exc_info=True)
+            self._capture_result = CaptureError(str(error))
+        else:
+            self._capture_result = capture
+
+    def _collect_capture(self) -> None:
+        """Take over a capture the start thread has finished with, if any."""
+        thread = self._capture_thread
+        if thread is not None and thread.is_alive():
+            return
+        result, self._capture_result = self._capture_result, None
+        self._capture_thread = None
+        if result is None:
+            return
+        if isinstance(result, CaptureError):
+            self._problem = str(result)
+            self._capture_error = True
+            log.warning("could not start capture: %s", result)
             self.changed.emit()
-            return False
-        self.capture = capture
-        self._problem = ""
-        return True
+            return
+        if self.capture is not None:
+            self.capture.stop()
+        self.capture = result
+        if self._problem:
+            self._problem = ""
+            self.changed.emit()
 
     # --- Presenting ------------------------------------------------------
 
     def _present(self) -> bool:
         """Bring up the overlay for a new run."""
         if not self._ensure_capture():
-            self.controller.suspend()
-            self.controller.resume()
+            if self._capture_error:
+                # It failed rather than being still on its way: give the run up.
+                self._capture_error = False
+                self.controller.suspend()
+                self.controller.resume()
             return False
 
         screen = QGuiApplication.primaryScreen()
@@ -426,6 +559,8 @@ class Engine(QObject):
         return True
 
     def _release_capture(self) -> None:
+        # A start still under way is taken over and stopped on a later tick.
+        self._collect_capture()
         capture, self.capture = self.capture, None
         if capture is not None:
             capture.stop()
@@ -452,6 +587,7 @@ class Engine(QObject):
             log.info("effect run: %s", self._stats.summary())
 
     def _teardown_effect(self) -> None:
+        self._held = False
         self.overlay.dismiss(animated=False)
         self.pointer.end()
         self._report_run()
@@ -465,7 +601,13 @@ class Engine(QObject):
         # attributes here, and the timer re-reads them next tick. Emitting the
         # signal is also thread safe; Qt queues it onto whatever thread each
         # connected slot actually lives on.
-        if not is_open:
+        # Plain attribute writes, read on the next tick; the shut flag is set
+        # first so the tick that sees the run abandoned also sees why.
+        if is_open:
+            self._lid_opened_at = time.monotonic()
+            self.controller.lid_opened()
+        else:
+            self._shut_pending = True
             self.controller.lid_shut()
         self.lid_state_changed.emit(is_open)
 

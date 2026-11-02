@@ -166,6 +166,12 @@ class EffectController:
         #: Waking can reset the estimator with the lid already partly open, so
         #: the resting angle alone cannot always tell a reopen.
         self._shut_seen = False
+        #: The lid switch reported shut and nothing has shown it open since.
+        #: No close may start meanwhile: the sensor can go on reporting the
+        #: closing movement for a moment after the switch, and a close begun
+        #: then replaced the frame the engine holds over the shut lid with a
+        #: fresh run that eased itself out to flat.
+        self._lid_closed = False
         #: The current run is a reopen from shut, playing the close backwards.
         self._reopening = False
         self._sample_time = 0.0
@@ -208,6 +214,11 @@ class EffectController:
         if abs(self._velocity) > 1.0 or abs(self._raw_travel) > 1.0:
             return ACTIVE_INTERVAL
         return IDLE_INTERVAL
+
+    @property
+    def absolute_angle(self) -> float:
+        """The lid angle from the last sample that had one, in degrees."""
+        return self._absolute_angle
 
     @property
     def is_active(self) -> bool:
@@ -261,6 +272,11 @@ class EffectController:
             log.info("lid shut, ending the effect")
         self._abandon()
         self._shut_seen = True
+        self._lid_closed = True
+
+    def lid_opened(self) -> None:
+        """The operating system reported the lid open again."""
+        self._lid_closed = False
 
     # --- Decisions -------------------------------------------------------
 
@@ -296,6 +312,8 @@ class EffectController:
         )
 
     def _wants_closing(self, now: float) -> bool:
+        if self._lid_closed:
+            return False
         # A lid resting below the threshold must not start the effect by itself,
         # so a recent downward movement is required as well as the position.
         closing_recently = now - self._last_closing < CLOSING_MEMORY
@@ -480,6 +498,7 @@ class EffectController:
             # open, so that is where the perspective's eye goes.
             self._neutral_angle = self._open_angle
             self._shut_seen = False
+            self._lid_closed = False
             log.info(
                 "effect on (reopening from shut): back to %.1f deg from %.1f",
                 self._open_angle,

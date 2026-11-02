@@ -185,6 +185,22 @@ class TestRelease:
         assert harness.controller.phase is Phase.IDLE
         assert harness.controller.step(harness.now) is None
 
+    def test_no_close_starts_again_while_the_lid_is_shut(self):
+        # The sensor can go on reporting the closing movement after the switch.
+        harness = Harness(trigger_travel=8.0)
+        harness.close(to=25.0)
+        harness.controller.lid_shut()
+        harness.close(to=60.0)
+        assert harness.controller.phase is Phase.IDLE
+
+    def test_a_close_can_start_again_once_the_lid_reports_open(self):
+        harness = Harness(trigger_travel=8.0)
+        harness.close(to=25.0)
+        harness.controller.lid_shut()
+        harness.controller.lid_opened()
+        harness.close(to=60.0)
+        assert harness.controller.phase is Phase.RUNNING
+
 
 class TestEasingOut:
     def test_eases_back_to_flat_and_reports_a_final_frame(self):
