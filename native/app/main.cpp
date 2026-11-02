@@ -46,7 +46,14 @@ Options parse(int argc, wchar_t** argv) {
 
 // Writes to the console that started this, if any (the app has no console).
 void say(const char* text) {
-    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    // Output redirected to a file or pipe comes through the standard handle;
+    // a console this attached to after starting has to be opened by name.
+    static HANDLE out = [] {
+        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (h && h != INVALID_HANDLE_VALUE) return h;
+        return CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0,
+                           nullptr);
+    }();
     DWORD wrote = 0;
     if (out && out != INVALID_HANDLE_VALUE) WriteFile(out, text, (DWORD)strlen(text), &wrote, nullptr);
 }
