@@ -213,8 +213,8 @@ void main() {
     // never treats the windows underneath as fully hidden, which would stop
     // them drawing and freeze the very picture being captured. Opaque pixels in
     // a translucent window give the same image without that side effect.
-    // Premultiplied. uOpacity stays 1 on Windows, where the window's own
-    // opacity does the fade; Wayland has no window opacity, so it fades here.
+    // Premultiplied. uOpacity stays 1 here, where the window's own opacity
+    // does the fade.
     //
     // uPictureFade brings the picture up out of black after a shut lid, when
     // the black stand-in is replaced by the first real capture. Applied to the

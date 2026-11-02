@@ -367,7 +367,7 @@ class Engine(QObject):
         # "live rendering off" means.
         #
         # Live only when the overlay is kept out of its own capture. Without
-        # that (Wayland, or Windows before 2004) every new frame would contain
+        # that (Windows before 2004) every new frame would contain
         # the overlay's previous frame, and the picture would feed back into
         # itself until it went black.
         live = settings.live_picture and self.overlay.excludes_itself_from_capture

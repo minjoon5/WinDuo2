@@ -15,9 +15,6 @@ def _app_dir() -> Path:
     base = os.environ.get("WINDUO2_HOME") or os.environ.get("APPDATA")
     if base:
         return Path(base) / "WinDuo2"
-    if sys.platform.startswith("linux"):
-        config = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        return Path(config) / "winduo2"
     return Path.home() / ".winduo2"
 
 

@@ -9,12 +9,7 @@ between lid and base directly, tried in this order:
   the accelerometers in both lid and base, so it is the true hinge angle
   whatever the base is resting on.
 
-On Linux the lid is read from the **lid accelerometer**, which every
-convertible carries for screen rotation. It reports gravity in the screen's own
-axes, and the screen's tilt against gravity is the lid angle whenever the base
-is level. When the base is not level, the tilt still changes one for one with
-the hinge, and the estimator only ever acts on change.
-
+``lid_angle_from_gravity`` turns an accelerometer reading into a lid angle.
 Accelerometer axes, as Windows defines them: x to the right of the screen, y up
 the screen, z out of the glass toward the viewer, in g. An upright screen reads
 (0, -1, 0) and a screen lying face up reads (0, 0, -1).
@@ -29,7 +24,6 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 from winduo2.angle.estimator import AngleSample, TravelEstimator
@@ -257,95 +251,6 @@ def _unbox_number(value) -> float | None:
     return None
 
 
-# --- Linux -----------------------------------------------------------------
-
-IIO_ROOT = Path("/sys/bus/iio/devices")
-
-
-class _LinuxAccelerometer:
-    """An IIO accelerometer, preferring the one the kernel labels as the display's.
-
-    IIO reports the reaction to gravity, so an upright screen reads +1 g up the
-    screen where Windows reads -1 g. Not every driver follows that, so the sign
-    is settled from the first confident reading instead: a lid in ordinary use
-    is between shut and flat, and only one of the two signs puts it there.
-    """
-
-    name = "accelerometer"
-
-    def __init__(self, device: Path) -> None:
-        self.name = f"accelerometer ({_read(device / 'name') or device.name})"
-        self._device = device
-        self._matrix = _mount_matrix(device)
-        self._scale = _number(device, "in_accel_scale", 1.0)
-        self._offset = _number(device, "in_accel_offset", 0.0)
-        self._sign: float | None = None
-
-    @classmethod
-    def open(cls, root: Path = IIO_ROOT, prefix: str = "iio:device") -> _LinuxAccelerometer | None:
-        # ``prefix`` is only ever changed by the tests: Windows, where CI runs
-        # them, does not allow a colon in a directory name.
-        devices = [
-            d for d in sorted(root.glob(prefix + "*")) if (d / "in_accel_x_raw").exists()
-        ]
-        if not devices:
-            return None
-
-        def rank(device: Path) -> int:
-            label = (_read(device / "label") or "").lower()
-            if "display" in label or "lid" in label:
-                return 0
-            return 2 if "base" in label else 1
-
-        return cls(min(devices, key=rank))
-
-    def read(self) -> tuple[float, float] | None:
-        raw = []
-        for axis in "xyz":
-            value = _read(self._device / f"in_accel_{axis}_raw")
-            if value is None:
-                return None
-            raw.append((float(value) + self._offset) * self._scale / GRAVITY)
-        x, y, z = (sum(m * v for m, v in zip(row, raw, strict=True)) for row in self._matrix)
-
-        if self._sign is None:
-            angle, confidence = lid_angle_from_gravity(-x, -y, -z)
-            if confidence < 0.5:
-                return angle, 0.0
-            self._sign = -1.0 if angle <= MAX_LID_ANGLE else 1.0
-        angle, confidence = lid_angle_from_gravity(self._sign * x, self._sign * y, self._sign * z)
-        return angle, confidence if angle <= MAX_LID_ANGLE else 0.0
-
-    def close(self) -> None:
-        pass
-
-
-def _read(path: Path) -> str | None:
-    try:
-        return path.read_text().strip()
-    except OSError:
-        return None
-
-
-def _number(device: Path, name: str, default: float) -> float:
-    try:
-        return float(_read(device / name) or default)
-    except ValueError:
-        return default
-
-
-def _mount_matrix(device: Path) -> list[list[float]]:
-    identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    text = _read(device / "in_accel_mount_matrix") or _read(device / "mount_matrix")
-    if not text:
-        return identity
-    try:
-        rows = [[float(v) for v in row.split(",")] for row in text.split(";")]
-    except ValueError:
-        return identity
-    return rows if len(rows) == 3 and all(len(r) == 3 for r in rows) else identity
-
-
 # --- Choosing --------------------------------------------------------------
 
 
@@ -353,8 +258,6 @@ def open_lid_sensor() -> LidSensor | None:
     """The best sensor this machine offers, or ``None``. Call on the reading thread."""
     if sys.platform == "win32":
         backends = (_WindowsHinge, _WindowsCustomHinge)
-    elif sys.platform.startswith("linux"):
-        backends = (_LinuxAccelerometer,)
     else:
         backends = ()
     for backend in backends:

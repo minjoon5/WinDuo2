@@ -18,9 +18,7 @@ The installed build has ``uiAccess``, and Windows refuses to start such an
 executable through a plain ``CreateProcess``, which is what Task Scheduler
 uses; the task would fail with "The requested operation requires elevation".
 Going through the shell lets Windows grant it as it does for a double-click, so
-that build's task starts it through ``ShellExec_RunDLL`` instead. On Linux the install
-script starts WinDuo2 from the Hyprland config instead, so everything here is a
-no-op there.
+that build's task starts it through ``ShellExec_RunDLL`` instead.
 """
 
 from __future__ import annotations

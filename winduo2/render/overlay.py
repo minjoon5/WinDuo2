@@ -12,7 +12,6 @@ rather than a convolution, so the cost does not grow with the blur radius.
 from __future__ import annotations
 
 import math
-import sys
 import time
 
 import numpy as np
@@ -41,7 +40,7 @@ __all__ = [
 #: side instead of smearing the edge pixel outward.
 PADDING_POINTS = 400.0
 
-#: The overlay's window title, which is how the Hyprland helper finds it.
+#: The overlay's window title, which makes it easy to find in window lists.
 OVERLAY_TITLE = "WinDuo2 overlay"
 
 
@@ -225,9 +224,7 @@ class _DepthView(QOpenGLWidget):
     def release_picture(self) -> None:
         self._pending = None
         self._has_picture = False
-        # Repaint transparent. Invisible behind a zero opacity on Windows, and
-        # the only thing that clears the screen on Wayland, where window
-        # opacity is not supported.
+        # Repaint transparent, behind the window's zero opacity.
         self.update()
 
     # --- GL --------------------------------------------------------------
@@ -345,15 +342,8 @@ class _DepthView(QOpenGLWidget):
         GL.glUseProgram(0)
 
     def _shader_opacity(self) -> float:
-        """1 where the window fades itself; the window's opacity elsewhere.
-
-        Wayland compositors ignore window opacity, but Qt still stores the
-        property the fade animations drive, so the shader reads it from there.
-        """
-        if sys.platform == "win32":
-            return 1.0
-        window = self.window()
-        return float(window.windowOpacity()) if window is not None else 1.0
+        """Always 1: the window's own opacity does the fade."""
+        return 1.0
 
     def _upload(self, frame: np.ndarray) -> None:
         if self._texture is None:
@@ -491,7 +481,6 @@ class DepthOverlay:
         self._excluded = win32.exclude_from_capture(window, True)
         win32.make_click_through(window)
         win32.raise_topmost(window)
-        self._place_on_wayland(geometry_rect)
         self._shown = False
 
         if not view.is_usable:
@@ -499,28 +488,6 @@ class DepthOverlay:
             return False
         log.info("overlay warmed up")
         return True
-
-    def _place_on_wayland(self, geometry_rect, attempt: int = 0) -> None:
-        """Ask Hyprland to float and pin the overlay once it has mapped.
-
-        Mapping is asynchronous, so the window may not be listed yet on the
-        first try; a few retries a fifth of a second apart cover that.
-        """
-        from winduo2.render import linux
-
-        if not linux.is_hyprland():
-            return
-        rect = (
-            geometry_rect.x(),
-            geometry_rect.y(),
-            geometry_rect.width(),
-            geometry_rect.height(),
-        )
-        if linux.place_overlay(OVERLAY_TITLE, rect) or attempt >= 10:
-            return
-        from PyQt6.QtCore import QTimer
-
-        QTimer.singleShot(200, lambda: self._place_on_wayland(geometry_rect, attempt + 1))
 
     def _reconfigure(self, geometry_rect, screen_size, picture_size) -> None:
         if self._window is None or self._view is None:
@@ -668,7 +635,6 @@ class DepthOverlay:
                 self._view.release_picture()
 
         fade.finished.connect(finished)
-        self._repaint_while(fade)
         fade.start()
         self._fade = fade
 
@@ -697,15 +663,9 @@ class DepthOverlay:
         fade.setDuration(duration_ms)
         fade.setStartValue(self._window.windowOpacity())
         fade.setEndValue(value)
-        self._repaint_while(fade)
         fade.start()
         self._fade = fade
 
-    def _repaint_while(self, fade: QPropertyAnimation) -> None:
-        """Where the shader does the fading, every step needs a repaint."""
-        if sys.platform != "win32" and self._view is not None:
-            view = self._view
-            fade.valueChanged.connect(lambda _value: view.update())
 
 
 # --- Helpers -------------------------------------------------------------

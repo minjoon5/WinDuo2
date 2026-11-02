@@ -8,7 +8,7 @@ Close your laptop lid and the screen leans away, blurring and dimming as it goes
 
 WinDuo2 reads the laptop's own hinge angle sensor: the one Windows exposes as standard, or the Intel Integrated Sensor Hub's hinge sensor on convertibles such as the Galaxy Book 360 series. No camera, no calibration.
 
-Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE.md)
+Windows 10 (2004+) and 11 · Free for noncommercial use, [PolyForm Noncommercial 1.0.0](LICENSE.md)
 
 ## Install
 
@@ -51,21 +51,6 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 - **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see [docs/uiaccess.md](docs/uiaccess.md)). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
-
-## Linux (Omarchy / Hyprland)
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/minjoon5/WinDuo2/main/packaging/omarchy/install.sh | bash
-```
-
-This installs the Arch packages it needs, creates a virtualenv under `~/.local/share/winduo2`, and starts WinDuo2 with Hyprland. `packaging/omarchy/uninstall.sh` undoes it. Differences from Windows:
-
-- **The picture is held, not live.** Wayland has no way for the overlay to keep itself out of a screen capture, so WinDuo2 captures one frame as the lid starts to move (with `grim`) and animates that.
-- **The lid is read from an accelerometer, not a hinge sensor.** Gravity seen in the screen's own axes gives the lid's tilt, which is the lid angle whenever the base is level, and the effect only acts on change, so a lap or a tilted desk works as long as the base is still. Tipping the whole laptop back can trigger it, though: it cannot tell the lid turning from the machine turning.
-- **Hyprland only.** The overlay is floated, pinned and sized with `hyprctl dispatch`, which works under both Hyprland config formats. Other compositors are not supported.
-- The lid is read from the IIO accelerometer under `/sys/bus/iio/devices`, preferring the one the kernel labels `accel-display`, and the lid switch from `/proc/acpi/button/lid`.
-
-The Linux port has been unit tested but not yet run on real Omarchy hardware. Reports are welcome.
 
 ## Contributing
 

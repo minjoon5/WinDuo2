@@ -141,7 +141,6 @@ class SettingsWindow(QWidget):
         self._launch_help = help_label("Runs WinDuo2 when you sign in.")
         switches.addWidget(self._launch)
         switches.addWidget(self._launch_help)
-        # On Linux the install script already starts it with Hyprland.
         self._launch.setVisible(autostart.is_supported())
         self._launch_help.setVisible(autostart.is_supported())
         layout.addLayout(switches)

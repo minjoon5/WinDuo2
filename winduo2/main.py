@@ -61,9 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     hang_report = _watch_for_a_hung_start()
 
-    if sys.platform != "win32" and not sys.platform.startswith("linux"):
+    if sys.platform != "win32":
         print(
-            "WinDuo2 runs on Windows, and on Linux under Hyprland.",
+            "WinDuo2 runs on Windows.",
             file=sys.stderr,
         )
         return 2
@@ -77,10 +77,6 @@ def main(argv: list[str] | None = None) -> int:
             log.info("WinDuo2 is already running; this copy is leaving it be")
             _stop_watching(hang_report)
             return 0
-    if sys.platform.startswith("linux"):
-        # The overlay has to be a native Wayland window for Hyprland to float
-        # and pin it; under XWayland it would be an X11 window it cannot place.
-        os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
     # Imported here so --help and the platform check cost nothing.
     from PyQt6.QtCore import QTimer
