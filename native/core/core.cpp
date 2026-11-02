@@ -740,7 +740,7 @@ double EffectController::predicted_travel(double now, bool opening) const {
 }
 
 double EffectController::target_travel() const {
-    if (reopening_) return std::max(open_angle_ - absolute_angle_, 0.0);
+    if (reopening_) return open_angle_ - absolute_angle_;
     return raw_travel_;
 }
 
@@ -784,11 +784,7 @@ bool EffectController::step(double now, Frame& out) {
         return false;
     }
     if (phase != Phase::ClosingOut) {
-        double target = target_travel();
-        double velocity = velocity_;
-        if (reopening_ && target <= 0.0) velocity = 0.0;
-        travel_spring_.advance(target, dt, velocity);
-        if (reopening_ && travel_spring_.value < 0.0) travel_spring_.reset(0.0);
+        travel_spring_.advance(target_travel(), dt, velocity_);
         out = frame(travel_spring_.value);
         return true;
     }

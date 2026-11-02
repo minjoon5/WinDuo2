@@ -595,7 +595,9 @@ class TestReopeningFromShut:
     def test_it_leans_back_rather_than_spreading(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
         frames = self.reopen(harness)
-        assert frames and not any(frame.opening for frame in frames)
+        # Opened only back to where it rested: no spread, just a hair past
+        # flat at most where the spring carries the lid's speed.
+        assert frames and not any(frame.opening and frame.progress > 0 for frame in frames)
         size = (1920.0, 1080.0)
         corners = harness.controller.corners(frames[0], size)
         # The far edge is inside the screen: the trapezoid a close ends on.
@@ -629,16 +631,23 @@ class TestReopeningFromShut:
         assert frames[-1].progress == pytest.approx(10.0 / 75.0, abs=0.03)
         assert not frames[-1].opening
 
-    def test_opening_past_where_it_rested_does_not_spread(self):
-        harness = Harness(trigger_travel=10.0)
-        frames = self.reopen(harness, to=140.0)
-        assert frames and not any(frame.opening for frame in frames)
-        assert frames[-1].progress == pytest.approx(0.0)
+    def test_opening_past_where_it_rested_goes_on_into_a_spread(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        frames = self.reopen(harness, to=140.0, rate=10.0)
+        # Leaned back first, then through flat and on into a spread, one run.
+        assert not frames[0].opening and frames[0].progress > 0.9
+        assert frames[-1].opening
+        # 40 past 100: 30 past the trigger.
+        assert frames[-1].progress == pytest.approx(30.0 / 75.0, abs=0.03)
+        assert harness.controller.phase is Phase.RUNNING
+        flat = [i for i, frame in enumerate(frames) if frame.progress == 0.0]
+        assert flat and all(frame.opening for frame in frames[flat[-1] + 1:])
 
     def test_a_lid_resting_shut_counts_without_the_lid_switch(self):
         harness = Harness(trigger_travel=10.0)
         frames = self.reopen(harness, switch=False)
-        assert frames and not any(frame.opening for frame in frames)
+        assert frames and not frames[0].opening and frames[0].progress > 0.9
+        assert not any(frame.opening and frame.progress > 0 for frame in frames)
 
     def test_stopping_partway_eases_back_to_flat(self):
         harness = Harness(trigger_travel=10.0)

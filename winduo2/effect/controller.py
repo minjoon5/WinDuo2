@@ -16,11 +16,12 @@ and the same ramp, driven by how far the lid has opened, with the picture
 spreading up and out rather than leaning back, whether the lid is rising from
 shut or an open screen is being tilted further back.
 
-Except from shut. A lid opened from fully closed does not spread: it plays the
-close backwards, starting leaned back the way a close ends and standing up as
-the lid rises, so shutting and reopening the laptop reads as one movement run
-both ways. The close it reverses is measured from the angle the lid last rested
-open at, the one it is most likely heading back to.
+Except from shut. A lid opened from fully closed plays the close backwards
+first, starting leaned back the way a close ends and standing up as the lid
+rises, so shutting and reopening the laptop reads as one movement run both
+ways. The close it reverses is measured from the angle the lid last rested
+open at, the one it is most likely heading back to. Opened further than that,
+the same run carries on through flat into a spread, as any opening does.
 
 The two are one run, not two. Eased travel is signed, closing positive, and the
 picture leans back or spreads by its sign, so a lid folded a little and then
@@ -328,10 +329,10 @@ class EffectController:
         """Signed, closing positive: the spring follows the lid through neutral.
 
         A reopen measures from the angle the lid last rested open at instead,
-        as a close from there would, and never goes past it into a spread.
+        as a close from there would; past that angle it goes on into a spread.
         """
         if self._reopening:
-            return max(self._open_angle - self._absolute_angle, 0.0)
+            return self._open_angle - self._absolute_angle
         return self._raw_travel
 
     def _opened_from_shut(self) -> bool:
@@ -413,16 +414,7 @@ class EffectController:
             # Fed the lid's speed as well as its place, so the picture keeps
             # pace with a moving lid rather than trailing it, which on the way
             # through neutral held back the start of the other direction.
-            target = self._target_travel()
-            velocity = self._velocity
-            if self._reopening and target <= 0.0:
-                # Past where the lid rested open the target holds at flat, so
-                # the lid's speed no longer moves it; fed in, it would carry
-                # the picture through flat into a spread.
-                velocity = 0.0
-            self._travel.advance(target, dt, velocity)
-            if self._reopening and self._travel.value < 0.0:
-                self._travel.reset(0.0)
+            self._travel.advance(self._target_travel(), dt, self._velocity)
             return self._frame(self._travel.value)
 
         elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION

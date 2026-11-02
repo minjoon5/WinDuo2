@@ -28,7 +28,7 @@ The effect is continuous, not a one-shot animation. It fades in once you have cl
 
 Opening has an effect of its own, the mirror of a close. Open a lid that was partly closed, or tilt an open screen further back, and once it has opened about 5° the picture starts to spread: its top edge widens past both sides of the screen and runs up past the top, with the bottom edge held on the hinge, growing as you keep opening and reaching full strength at about 80°. When the lid comes to rest it eases back into place.
 
-Lifting the lid from fully shut is different: it plays the close backwards. The picture starts leaned back, blurred and dimmed, the way a close ends, and stands back up as the lid rises, flat again by the angle the lid was last open at. Opening past that angle does not spread it, and stopping short eases it back into place. A lid counts as shut when Windows reports it closed or it has rested below 20°.
+Lifting the lid from fully shut is different: it plays the close backwards. The picture starts leaned back, blurred and dimmed, the way a close ends, and stands back up as the lid rises, flat again by the angle the lid was last open at. Opening on past that angle carries straight on into the spread, in the same movement, and stopping anywhere eases it back into place. A lid counts as shut when Windows reports it closed or it has rested below 20°.
 
 The picture behaves like a sheet hinged at the bottom of the screen that leans back as the lid closes, so its top edge comes down and narrows. By default it leans back at 0.8° per degree of closing, and the tilt levels off at about 55° past the trigger instead of stretching the picture into a smear as the lid nears flat. *Lean back* and *Tilt limit* in the settings adjust both.
 
