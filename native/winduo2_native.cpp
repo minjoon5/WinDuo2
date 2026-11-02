@@ -710,6 +710,10 @@ static bool register_class() {
     return true;
 }
 
+// How long a picture may be waited for without a real desktop frame before
+// an empty one is taken as the picture anyway.
+static const double EMPTY_FRAME_GRACE_MS = 250.0;
+
 #ifndef WDA_EXCLUDEFROMCAPTURE
 #define WDA_EXCLUDEFROMCAPTURE 0x00000011
 #endif
@@ -729,6 +733,10 @@ struct Renderer {
     ComPtr<IDXGIOutput1> output;
     ComPtr<IDXGIOutputDuplication> duplication;
     int rotation = DXGI_MODE_ROTATION_IDENTITY;
+    // When a picture was first asked for and none was there, and whether the
+    // desktop copy holds an empty frame kept in case no real one comes.
+    double wanted_since_ms = 0.0;
+    bool held_empty = false;
 
     ComPtr<IDXGISwapChain1> swapchain;
     // Signalled when the swap chain can take another frame without waiting:
@@ -882,15 +890,46 @@ struct Renderer {
         DXGI_OUTDUPL_DESC desc;
         duplication->GetDesc(&desc);
         rotation = desc.Rotation;
+        reset_wait();
         return true;
     }
 
     void stop_capture() { duplication.Reset(); }
 
+    void reset_wait() {
+        wanted_since_ms = 0.0;
+        held_empty = false;
+    }
+
+    // While a picture is wanted and none has come, a transparent frame on the
+    // overlay, which is still at zero opacity: it makes the compositor draw
+    // the desktop again, and so hands Desktop Duplication a real frame.
+    void nudge_compositor() {
+        ComPtr<ID3D11Texture2D> back;
+        if (FAILED(swapchain->GetBuffer(0, IID_PPV_ARGS(&back)))) return;
+        ComPtr<ID3D11RenderTargetView> rtv;
+        if (FAILED(pipe.device->CreateRenderTargetView(back.Get(), nullptr, &rtv))) return;
+        const float clear[4] = {0, 0, 0, 0};
+        pipe.context->ClearRenderTargetView(rtv.Get(), clear);
+        if (SUCCEEDED(swapchain->Present(1, DXGI_PRESENT_DO_NOT_WAIT))) permit = false;
+    }
+
     // The newest desktop image into the picture, if there is a new one.
     // Returns WD_NEW_PICTURE and/or WD_CAPTURE_LOST.
     int pull_picture() {
         if (!duplication && !start_capture()) return WD_CAPTURE_LOST;
+        if (!pipe.has_picture && wanted_since_ms == 0.0) wanted_since_ms = now_ms();
+        int result = take_frame();
+        if (!pipe.has_picture && held_empty && !(result & WD_CAPTURE_LOST) &&
+            now_ms() - wanted_since_ms >= EMPTY_FRAME_GRACE_MS) {
+            pipe.scale_desktop_into_picture();
+            result |= WD_NEW_PICTURE;
+        }
+        if (pipe.has_picture) reset_wait();
+        return result;
+    }
+
+    int take_frame() {
         DXGI_OUTDUPL_FRAME_INFO info;
         ComPtr<IDXGIResource> resource;
         HRESULT hr = duplication->AcquireNextFrame(0, &info, &resource);
@@ -907,16 +946,26 @@ struct Renderer {
             return WD_CAPTURE_LOST;
         }
         int result = 0;
-        // A pointer-only update has no new desktop image.
-        if (info.LastPresentTime.QuadPart != 0 || !pipe.has_picture) {
+        // A frame with no present time has no desktop image in it: a pointer
+        // move, or the first frame of a new duplication, which after the
+        // desktop has sat still for a while is empty and comes out black.
+        // With no picture yet, that one is only kept aside, and taken once no
+        // real frame has come for a while, as on a desktop where nothing
+        // changes at all.
+        bool real = info.LastPresentTime.QuadPart != 0;
+        if (real || (!pipe.has_picture && !held_empty)) {
             ComPtr<ID3D11Texture2D> frame;
             if (SUCCEEDED(resource.As(&frame))) {
                 D3D11_TEXTURE2D_DESC fd;
                 frame->GetDesc(&fd);
                 if (pipe.ensure_desktop((int)fd.Width, (int)fd.Height)) {
                     pipe.context->CopyResource(pipe.desktop.Get(), frame.Get());
-                    pipe.scale_desktop_into_picture();
-                    result |= WD_NEW_PICTURE;
+                    if (real) {
+                        pipe.scale_desktop_into_picture();
+                        result |= WD_NEW_PICTURE;
+                    } else {
+                        held_empty = true;
+                    }
                 }
             }
         }
@@ -949,6 +998,7 @@ struct Renderer {
         if (flags & WD_WANT_PICTURE) result |= pull_picture();
         double t1 = now_ms();
         if (!pipe.has_picture) {
+            if ((flags & WD_WANT_PICTURE) && duplication) nudge_compositor();
             if (timings) *timings = {(float)(t1 - t0), 0.0f, 0.0f};
             return result;
         }
@@ -1078,6 +1128,7 @@ WD_API void wd_blank(void* handle) { static_cast<Renderer*>(handle)->pipe.fill_p
 WD_API int wd_clear(void* handle) {
     auto* r = static_cast<Renderer*>(handle);
     r->pipe.has_picture = false;
+    r->reset_wait();
     return r->present_clear() ? 1 : 0;
 }
 
