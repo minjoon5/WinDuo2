@@ -87,6 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     from winduo2.ui.theme import STYLESHEET, app_icon, ui_font
     from winduo2.ui.tray import TrayController
 
+    if options.autostart:
+        _wait_for_the_shell()
+
     # Must happen before any window exists, or the context is already chosen.
     configure_surface()
 
@@ -140,8 +143,9 @@ def main(argv: list[str] | None = None) -> int:
     from winduo2.render import win32
 
     log.info(
-        "WinDuo2 %s ready%s%s",
+        "WinDuo2 %s ready%s%s%s",
         __version__,
+        _since_process_start(),
         _since_boot(),
         ", with uiAccess" if win32.has_ui_access() else "",
     )
@@ -216,6 +220,71 @@ def _since_boot() -> str:
     getter = ctypes.windll.kernel32.GetTickCount64
     getter.restype = ctypes.c_ulonglong
     return f", {getter() / 1000.0:.0f} s after the machine started"
+
+
+def _since_process_start() -> str:
+    """How long this process took to get here, bootloader and imports included."""
+    if sys.platform != "win32":
+        return ""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    created, exited, kernel, user, now = (wintypes.FILETIME() for _ in range(5))
+    if not kernel32.GetProcessTimes(
+        kernel32.GetCurrentProcess(),
+        ctypes.byref(created), ctypes.byref(exited),
+        ctypes.byref(kernel), ctypes.byref(user),
+    ):
+        return ""
+    kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
+
+    def ticks(t):
+        return (t.dwHighDateTime << 32) | t.dwLowDateTime
+
+    return f" in {(ticks(now) - ticks(created)) / 1e7:.1f} s"
+
+
+#: Longest the sign-in start waits for the taskbar before going ahead anyway.
+SHELL_WAIT = 30.0
+
+
+def _wait_for_the_shell(timeout: float = SHELL_WAIT) -> None:
+    """At sign-in, hold the first window back until the taskbar is up.
+
+    Task Scheduler starts WinDuo2 the moment the user signs in, often before
+    Explorer has built the taskbar and its notification area. The installed
+    uiAccess build once hung for good when it made its windows that early. A
+    fixed delay would cost every sign-in that long; this waits only as long as
+    the shell actually takes, which is nothing once it is up. The imports above
+    have already run by now, so their time overlaps with the shell's.
+    """
+    if sys.platform != "win32":
+        return
+    import ctypes
+    import time
+
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.restype = ctypes.c_void_p
+    user32.FindWindowExW.restype = ctypes.c_void_p
+    user32.FindWindowExW.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p
+    ]
+
+    def ready() -> bool:
+        taskbar = user32.FindWindowW("Shell_TrayWnd", None)
+        return bool(taskbar and user32.FindWindowExW(taskbar, None, "TrayNotifyWnd", None))
+
+    started = time.monotonic()
+    while not ready():
+        if time.monotonic() - started >= timeout:
+            log.warning("the taskbar is not up after %.0f s; starting anyway", timeout)
+            return
+        time.sleep(0.1)
+    waited = time.monotonic() - started
+    if waited >= 0.1:
+        log.info("waited %.1f s for the taskbar", waited)
 
 
 #: A start that has not reached "ready" in this long has hung somewhere.

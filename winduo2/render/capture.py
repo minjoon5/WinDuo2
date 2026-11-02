@@ -19,7 +19,6 @@ import threading
 import time
 from abc import ABC, abstractmethod
 
-import cv2
 import numpy as np
 
 from winduo2.log import get_logger
@@ -192,6 +191,8 @@ class _GrimBackend(Backend):
 
 def decode_ppm(data: bytes) -> np.ndarray | None:
     """A binary P6 PPM, as a BGRA array. None if it is not one."""
+    import cv2
+
     image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return None
@@ -305,6 +306,12 @@ class ScreenCapture:
         interval = max(1.0 / max(self.fps, 1), getattr(self._backend, "min_interval", 0.0))
         target = _capped(self.native_size, self.width_cap)
         needs_resize = target != self.native_size
+        if needs_resize:
+            # Imported here, on the capture thread, rather than at module load:
+            # OpenCV is the largest library in the bundle, and loading it at
+            # startup kept the tray icon waiting at sign-in for a resize that
+            # only happens once the lid moves.
+            import cv2
         failures = 0
 
         while not self._stop.is_set():

@@ -57,8 +57,8 @@ class TestTask:
     def test_starts_this_user_at_sign_in(self, monkeypatch, tmp_path):
         task, _ = self._task(monkeypatch, tmp_path)
         assert task.find("t:Triggers/t:LogonTrigger/t:UserId", NS).text == "LAPTOP\\minjoon"
-        # Not the very instant of sign-in, when the installed build hung.
-        assert task.find("t:Triggers/t:LogonTrigger/t:Delay", NS).text == autostart.LOGON_DELAY
+        # No fixed delay: the app waits for the taskbar itself, only as long as needed.
+        assert task.find("t:Triggers/t:LogonTrigger/t:Delay", NS) is None
         principal = task.find("t:Principals/t:Principal", NS)
         assert principal.find("t:RunLevel", NS).text == "LeastPrivilege"
 
