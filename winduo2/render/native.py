@@ -338,6 +338,14 @@ class NativeOverlay:
         self._lib.wd_blank(self._handle)
         self._has_picture = True
         self._placeholder = True
+        # Presented now, not on the next frame: until something is presented
+        # the screen keeps the last frame, which is the very picture from
+        # before the lid shut that must not be seen when it opens.
+        if self._params.profile_end > 0.0:
+            self._params.picture_fade = 0.0
+            self._lib.wd_frame(
+                self._handle, ctypes.byref(self._params), 0, ctypes.byref(self._timings)
+            )
 
     def dismiss(self, animated: bool = True) -> None:
         if not self._shown or self._handle is None:
