@@ -210,30 +210,52 @@ def _since_boot() -> str:
     long WinDuo2 took to come up."""
     if sys.platform != "win32":
         return ""
-    import ctypes
+    try:
+        import ctypes
 
-    getter = ctypes.windll.kernel32.GetTickCount64
-    getter.restype = ctypes.c_ulonglong
-    return f", {getter() / 1000.0:.0f} s after the machine started"
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+        return f", {kernel32.GetTickCount64() / 1000.0:.0f} s after the machine started"
+    except Exception:
+        # Only a note in the log; never worth failing the start over.
+        log.debug("could not read the uptime", exc_info=True)
+        return ""
 
 
 def _since_process_start() -> str:
     """How long this process took to get here, bootloader and imports included."""
     if sys.platform != "win32":
         return ""
-    import ctypes
-    from ctypes import wintypes
+    try:
+        import ctypes
+        from ctypes import wintypes
 
-    kernel32 = ctypes.windll.kernel32
-    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-    created, exited, kernel, user, now = (wintypes.FILETIME() for _ in range(5))
-    if not kernel32.GetProcessTimes(
-        kernel32.GetCurrentProcess(),
-        ctypes.byref(created), ctypes.byref(exited),
-        ctypes.byref(kernel), ctypes.byref(user),
-    ):
+        # A private handle on kernel32, so the signatures set here do not leak
+        # into other modules' calls through the shared ctypes.windll one.
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetCurrentProcess.argtypes = []
+        # Without argtypes ctypes passes a Python int as a 32-bit C int, and the
+        # current-process pseudo handle, -1 read back as an unsigned 64-bit
+        # HANDLE, overflowed it and crashed the start.
+        kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
+            ctypes.POINTER(wintypes.FILETIME)
+        ] * 4
+        kernel32.GetProcessTimes.restype = wintypes.BOOL
+        kernel32.GetSystemTimeAsFileTime.argtypes = [ctypes.POINTER(wintypes.FILETIME)]
+        kernel32.GetSystemTimeAsFileTime.restype = None
+
+        created, exited, kernel, user, now = (wintypes.FILETIME() for _ in range(5))
+        if not kernel32.GetProcessTimes(
+            kernel32.GetCurrentProcess(),
+            ctypes.byref(created), ctypes.byref(exited),
+            ctypes.byref(kernel), ctypes.byref(user),
+        ):
+            return ""
+        kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
+    except Exception:
+        log.debug("could not read the process start time", exc_info=True)
         return ""
-    kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
 
     def ticks(t):
         return (t.dwHighDateTime << 32) | t.dwLowDateTime
