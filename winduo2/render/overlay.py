@@ -100,6 +100,7 @@ class FrameParams:
         "hinge_glow",
         "reflection_intensity",
         "turn_strength",
+        "picture_fade",
     )
 
     def __init__(
@@ -115,6 +116,7 @@ class FrameParams:
         hinge_glow: float = 0.0,
         reflection_intensity: float = 0.0,
         turn_strength: float = 0.0,
+        picture_fade: float = 1.0,
     ) -> None:
         #: A ``winduo2.effect.geometry.Profile``: where each screen row samples.
         self.profile = profile
@@ -128,6 +130,8 @@ class FrameParams:
         self.max_dim = max_dim
         self.hinge_glow = hinge_glow
         self.reflection_intensity = reflection_intensity
+        #: 0 draws the picture black, 1 as it is; see the shader's uPictureFade.
+        self.picture_fade = picture_fade
 
 
 class _DepthView(QOpenGLWidget):
@@ -334,6 +338,7 @@ class _DepthView(QOpenGLWidget):
         GL.glUniform1f(u["uReflectionIntensity"], params.reflection_intensity)
         GL.glUniform1f(u["uTurn"], params.turn_strength)
         GL.glUniform1f(u["uOpacity"], self._shader_opacity())
+        GL.glUniform1f(u["uPictureFade"], params.picture_fade)
 
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
         GL.glBindVertexArray(0)
@@ -590,6 +595,11 @@ class DepthOverlay:
         self._placeholder = True
 
     @property
+    def showing_stand_in(self) -> bool:
+        """Drawing the black stand-in from :meth:`blank_picture`."""
+        return self.has_picture and getattr(self, "_placeholder", False)
+
+    @property
     def needs_picture(self) -> bool:
         """No picture yet, or only the black stand-in from :meth:`blank_picture`."""
         return not self.has_picture or getattr(self, "_placeholder", False)
@@ -835,6 +845,7 @@ _UNIFORM_NAMES = (
     "uReflectionIntensity",
     "uTurn",
     "uOpacity",
+    "uPictureFade",
 )
 
 

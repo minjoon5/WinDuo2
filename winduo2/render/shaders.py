@@ -70,6 +70,7 @@ uniform float uHingeGlow;           // 0 to 1, strength of the hinge highlight
 uniform float uReflectionIntensity; // 0 to 1, strength of the reflection band
 uniform float uTurn;                // 0 to 1, how far the picture has turned
 uniform float uOpacity;             // 0 to 1, the fade where windows cannot fade
+uniform float uPictureFade;         // 0 to 1, black to the picture, after a shut lid
 
 out vec4 fragColour;
 
@@ -214,7 +215,11 @@ void main() {
     // a translucent window give the same image without that side effect.
     // Premultiplied. uOpacity stays 1 on Windows, where the window's own
     // opacity does the fade; Wayland has no window opacity, so it fades here.
-    fragColour = vec4(linearToSrgb(colour) * uOpacity, uOpacity);
+    //
+    // uPictureFade brings the picture up out of black after a shut lid, when
+    // the black stand-in is replaced by the first real capture. Applied to the
+    // encoded colour, so the fade looks even rather than rushing at the start.
+    fragColour = vec4(linearToSrgb(colour) * uPictureFade * uOpacity, uOpacity);
 }
 """
 

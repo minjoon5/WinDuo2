@@ -122,6 +122,10 @@ class Engine(QObject):
     #: covering the screen.
     HOLD_AFTER_OPEN = 2.0
 
+    #: Seconds the picture takes to come up out of the black held over a shut
+    #: lid once the first real capture arrives.
+    PICTURE_FADE_IN = 0.35
+
     #: While the pacer drives frames, the timer only fires if it falls silent
     #: this long, as it does when the panel turns off with the lid shut.
     BACKSTOP_MS = 50
@@ -161,6 +165,7 @@ class Engine(QObject):
         self._held_open_since = 0.0
         self._shut_pending = False
         self._lid_opened_at = 0.0
+        self._picture_fade_from = float("-inf")
         self._unsubscribe = store.subscribe(self._settings_changed)
 
     # --- Lifecycle -------------------------------------------------------
@@ -375,7 +380,22 @@ class Engine(QObject):
         if capture is not None and tuple(capture.size) != self.overlay.picture_size:
             capture = None
         new_frame = capture.take() if capture is not None and wants_frame else None
+        params.picture_fade = self._picture_fade(new_frame is not None)
         self.overlay.submit(new_frame, params)
+
+    def _picture_fade(self, new_picture: bool) -> float:
+        """How far the picture has come up out of the black over a shut lid.
+
+        0 while the black stand-in is all there is; from the first real
+        capture it rises to 1 over ``PICTURE_FADE_IN``, so the lock screen
+        fades in rather than appearing between one frame and the next.
+        """
+        now = time.monotonic()
+        if self.overlay.showing_stand_in:
+            if not new_picture:
+                return 0.0
+            self._picture_fade_from = now
+        return min(max((now - self._picture_fade_from) / self.PICTURE_FADE_IN, 0.0), 1.0)
 
     # --- Holding a frame over a shut lid ------------------------------------
 
