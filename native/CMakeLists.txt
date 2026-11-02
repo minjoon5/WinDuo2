@@ -38,6 +38,8 @@ foreach(variant IN ITEMS plain uiaccess)
   set(target WinDuo2_${variant})
   add_executable(${target} WIN32 ${APP_SOURCES})
   set_target_properties(${target} PROPERTIES
+    # C++20 for C++/WinRT's coroutines; C++17 would pull in the removed /await ones.
+    CXX_STANDARD 20
     OUTPUT_NAME WinDuo2
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/app/${variant}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/app/${variant}/debug)

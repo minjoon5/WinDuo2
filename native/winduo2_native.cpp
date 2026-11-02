@@ -17,8 +17,12 @@
 // with them. Python drives everything through the plain C API at the bottom,
 // with ctypes; see winduo2/render/native.py.
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 
 #include <d3d11.h>
