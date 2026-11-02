@@ -573,6 +573,27 @@ class DepthOverlay:
         width, height = self._configured[1]
         return (int(width), int(height))
 
+    def blank_picture(self) -> None:
+        """Replace the picture with black, keeping the window up and the shape.
+
+        Everything off the picture is already drawn opaque black, so with a
+        black picture the whole screen is black: what the panel shows anyway
+        coming back on, and nothing of what was on screen before.
+        """
+        size = self.picture_size
+        if self._view is None or size is None or self._view._params is None:
+            return
+        width, height = size
+        black = np.zeros((height, width, 4), dtype=np.uint8)
+        black[..., 3] = 255  # BGRA, opaque
+        self._view.submit(black, self._view._params)
+        self._placeholder = True
+
+    @property
+    def needs_picture(self) -> bool:
+        """No picture yet, or only the black stand-in from :meth:`blank_picture`."""
+        return not self.has_picture or getattr(self, "_placeholder", False)
+
     def attach_stats(self, stats) -> None:
         """Have the view report paint and present times to ``stats``."""
         self._stats = stats
@@ -589,6 +610,8 @@ class DepthOverlay:
             return
         if self._view.stats is None:
             self._view.stats = getattr(self, "_stats", None)
+        if frame is not None:
+            self._placeholder = False
         now = time.monotonic()
         if self._window is not None and now - self._raised_at >= self.RAISE_INTERVAL:
             win32.raise_topmost(self._window)

@@ -291,7 +291,7 @@ class Engine(QObject):
             # The lid opened and the close plays backwards from the held frame,
             # which was on screen from the moment the display came back.
             self._held = False
-            log.info("reopening from the frame held over the shut lid")
+            log.info("reopening from the overlay held over the shut lid")
             self.pointer.begin()
             self._stats.begin(self._pacer.period)
 
@@ -366,7 +366,7 @@ class Engine(QObject):
         # the overlay's previous frame, and the picture would feed back into
         # itself until it went black.
         live = settings.live_picture and self.overlay.excludes_itself_from_capture
-        wants_frame = live or not self.overlay.has_picture
+        wants_frame = live or self.overlay.needs_picture
         # A run carried on from a frame held over a shut lid starts before its
         # capture is back; the held picture is drawn until it is. A capture at
         # some other size than the overlay was set up for, as after a display
@@ -386,16 +386,22 @@ class Engine(QObject):
         has seen it move, and the capture needs a moment to restart after the
         panel was off. Faded out and started afresh, the effect missed those
         first frames, and the lock screen showed sharp before the reopening
-        caught up. The last frame of a close is the picture leaned back, blurred
-        and dimmed, which is exactly where the reopening starts, so it stays
-        up, and the reopening carries on from it.
+        caught up. So the overlay stays up, and the reopening carries on from
+        it.
+
+        Its picture is made black first. What was on screen before the lid
+        shut must not be seen again when it opens, least of all over the lock
+        screen, and black is what the panel was showing while it was off.
+        The lock screen appears, leaned back and blurred, once the capture is
+        back.
         """
         if not (self.overlay.is_visible and self.overlay.has_picture):
             return
         self._held = True
         self._held_at = now
         self._held_open_since = 0.0
-        log.info("lid shut: holding the last frame for when it opens")
+        self.overlay.blank_picture()
+        log.info("lid shut: holding the overlay, blacked out, for when it opens")
         self._report_run()
         self.pointer.end()
         # The panel is off; the capture has nothing to read until it is back.
