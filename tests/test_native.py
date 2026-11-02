@@ -62,7 +62,8 @@ class _FakeLib:
         self.calls.append(("frame", want, params._obj.picture_fade))
         if self.frames < self.has_picture_after:
             return 0
-        return native._DREW | native._HAS_PICTURE | (native._NEW_PICTURE if want else 0)
+        new = native._NEW_PICTURE if want & native._WANT_PICTURE else 0
+        return native._DREW | native._HAS_PICTURE | new
 
     def wd_opacity(self, handle, start, end, seconds):
         self.calls.append(("opacity", start, end, seconds))
@@ -128,7 +129,8 @@ def test_blacking_out_presents_at_once(overlay):
     overlay.blank_picture()
     kinds = [c[0] for c in overlay._lib.calls]
     assert kinds == ["blank", "frame"]
-    assert overlay._lib.calls[1][1:] == (0, 0.0)  # no new picture, drawn black
+    # No new picture, drawn black, and presented even if that means waiting.
+    assert overlay._lib.calls[1][1:] == (native._MUST_PRESENT, 0.0)
     assert overlay.showing_stand_in and overlay.needs_picture
 
 

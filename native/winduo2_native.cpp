@@ -25,9 +25,11 @@
 #include <d3dcompiler.h>
 #include <dcomp.h>
 #include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -42,7 +44,7 @@ using Microsoft::WRL::ComPtr;
 #define WD_API extern "C" __declspec(dllexport)
 
 // Bumped whenever the C API or WdParams changes, so a stale DLL is refused.
-static const int WD_VERSION = 1;
+static const int WD_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // The C API's types. Mirrored by ctypes structures in winduo2/render/native.py.
@@ -91,6 +93,12 @@ static_assert(sizeof(WdInfo) == 40, "WdInfo layout changed: bump WD_VERSION");
 static_assert(sizeof(WdTimings) == 12, "WdTimings layout changed: bump WD_VERSION");
 
 // wd_frame's result bits.
+// wd_frame's ``flags``.
+enum {
+    WD_WANT_PICTURE = 1,  // pull a new desktop image first, if there is one
+    WD_MUST_PRESENT = 2,  // present even if that means waiting
+};
+
 enum {
     WD_DREW = 1,
     WD_NEW_PICTURE = 2,
@@ -719,6 +727,13 @@ struct Renderer {
     int rotation = DXGI_MODE_ROTATION_IDENTITY;
 
     ComPtr<IDXGISwapChain1> swapchain;
+    // Signalled when the swap chain can take another frame without waiting:
+    // once per vertical blank while frames are being presented.
+    HANDLE frame_ready = nullptr;
+    // A frame_ready signal taken by wd_wait and not yet spent on a present.
+    // Waiting again would lose it, and with one frame of latency a lost
+    // signal never comes back; so it is held until a present uses it.
+    std::atomic<bool> permit{false};
     ComPtr<IDCompositionDevice> dcomp;
     ComPtr<IDCompositionTarget> target;
     ComPtr<IDCompositionVisual> visual;
@@ -726,6 +741,7 @@ struct Renderer {
 
     ~Renderer() {
         duplication.Reset();
+        if (frame_ready) CloseHandle(frame_ready);
         if (hwnd) DestroyWindow(hwnd);
     }
 
@@ -808,13 +824,18 @@ struct Renderer {
         desc.Scaling = DXGI_SCALING_STRETCH;
         desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+        desc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
         CHECK(factory->CreateSwapChainForComposition(pipe.device.Get(), &desc, nullptr,
                                                      &swapchain),
               "CreateSwapChainForComposition");
 
-        // Two frames queued at most, so a frame drawn now is on screen soon.
-        ComPtr<IDXGIDevice1> dxgi_device1;
-        if (SUCCEEDED(pipe.device.As(&dxgi_device1))) dxgi_device1->SetMaximumFrameLatency(2);
+        // One frame of latency, and a handle that says when to draw it. The
+        // frame loop waits on that rather than on a timer, so every frame is
+        // drawn just after a vertical blank and presenting never blocks.
+        ComPtr<IDXGISwapChain2> swapchain2;
+        CHECK(swapchain.As(&swapchain2), "IDXGISwapChain2");
+        CHECK(swapchain2->SetMaximumFrameLatency(1), "SetMaximumFrameLatency");
+        frame_ready = swapchain2->GetFrameLatencyWaitableObject();
 
         CHECK(DCompositionCreateDevice(dxgi_device.Get(), IID_PPV_ARGS(&dcomp)),
               "DCompositionCreateDevice");
@@ -838,6 +859,7 @@ struct Renderer {
         const float clear[4] = {0, 0, 0, 0};
         pipe.context->ClearRenderTargetView(rtv.Get(), clear);
         HRESULT hr = swapchain->Present(0, 0);
+        permit = false;
         if (FAILED(hr)) {
             set_error("Present failed (0x%08lx)", (unsigned long)hr);
             return false;
@@ -906,10 +928,21 @@ struct Renderer {
         return pipe.create_picture() && create_window() && create_swapchain();
     }
 
-    int frame(const WdParams& params, bool want_picture, WdTimings* timings) {
+    // Waits up to ``timeout_ms`` for the swap chain to want a frame. 1 when it
+    // does, 2 when an earlier signal is still unspent, 0 on timeout.
+    int wait(int timeout_ms) {
+        if (permit) return 2;
+        if (!frame_ready) return 0;
+        DWORD waited = WaitForSingleObjectEx(frame_ready, (DWORD)std::max(timeout_ms, 0), TRUE);
+        if (waited != WAIT_OBJECT_0) return 0;
+        permit = true;
+        return 1;
+    }
+
+    int frame(const WdParams& params, int flags, WdTimings* timings) {
         int result = 0;
         double t0 = now_ms();
-        if (want_picture) result |= pull_picture();
+        if (flags & WD_WANT_PICTURE) result |= pull_picture();
         double t1 = now_ms();
         if (!pipe.has_picture) {
             if (timings) *timings = {(float)(t1 - t0), 0.0f, 0.0f};
@@ -921,12 +954,17 @@ struct Renderer {
         if (FAILED(pipe.device->CreateRenderTargetView(back.Get(), nullptr, &rtv))) return result;
         pipe.draw_effect(rtv.Get(), params);
         double t2 = now_ms();
-        // Waits for a vertical blank, and at most two frames queued, so a
-        // frame drawn faster than the panel shows them is held rather than lost.
-        HRESULT hr = swapchain->Present(1, 0);
+        // On the next vertical blank. Never waiting, unless told to: a frame
+        // drawn when the swap chain is full is dropped rather than blocking
+        // the app, which a display turning off would do for most of a second.
+        HRESULT hr = swapchain->Present(1, (flags & WD_MUST_PRESENT) ? 0 : DXGI_PRESENT_DO_NOT_WAIT);
         double t3 = now_ms();
-        if (SUCCEEDED(hr)) result |= WD_DREW;
-        else set_error("Present failed (0x%08lx)", (unsigned long)hr);
+        if (SUCCEEDED(hr)) {
+            result |= WD_DREW;
+            permit = false;
+        } else if (hr != DXGI_ERROR_WAS_STILL_DRAWING) {
+            set_error("Present failed (0x%08lx)", (unsigned long)hr);
+        }
         result |= WD_HAS_PICTURE;
         if (timings) *timings = {(float)(t1 - t0), (float)(t2 - t1), (float)(t3 - t2)};
         return result;
@@ -1008,11 +1046,16 @@ WD_API int wd_capture(void* handle, int on) {
     return r->start_capture() ? 1 : 0;
 }
 
-// One frame: a new picture first if ``want_picture`` and the desktop has one,
+// One frame: a new picture first if WD_WANT_PICTURE and the desktop has one,
 // then the effect, presented on the next vertical blank. Returns WD_* bits.
-WD_API int wd_frame(void* handle, const WdParams* params, int want_picture,
-                    WdTimings* timings) {
-    return static_cast<Renderer*>(handle)->frame(*params, want_picture != 0, timings);
+WD_API int wd_frame(void* handle, const WdParams* params, int flags, WdTimings* timings) {
+    return static_cast<Renderer*>(handle)->frame(*params, flags, timings);
+}
+
+// Waits for the swap chain to want a frame; see Renderer::wait. Safe to call
+// from another thread than the one drawing, but not while wd_destroy runs.
+WD_API int wd_wait(void* handle, int timeout_ms) {
+    return static_cast<Renderer*>(handle)->wait(timeout_ms);
 }
 
 // The picture replaced with black, keeping its margin and pyramid in shape.

@@ -32,10 +32,15 @@ __all__ = ["NativeCapture", "NativeOverlay", "PULL", "available", "last_error", 
 DLL_NAME = "winduo2_native.dll"
 
 #: The C API version this module speaks; see WD_VERSION in the C++.
-API_VERSION = 1
+API_VERSION = 2
 
 PROFILE_SAMPLES = 128
 
+# wd_frame's flags.
+_WANT_PICTURE = 1
+_MUST_PRESENT = 2
+
+# wd_frame's result bits.
 _DREW = 1
 _NEW_PICTURE = 2
 _HAS_PICTURE = 4
@@ -132,6 +137,8 @@ def _load():
         ctypes.c_void_p, ctypes.POINTER(_Params), ctypes.c_int, ctypes.POINTER(_Timings)
     ]
     lib.wd_frame.restype = ctypes.c_int
+    lib.wd_wait.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    lib.wd_wait.restype = ctypes.c_int
     lib.wd_blank.argtypes = [ctypes.c_void_p]
     lib.wd_blank.restype = None
     lib.wd_clear.argtypes = [ctypes.c_void_p]
@@ -206,6 +213,21 @@ class NativeCapture:
 
     def take(self):
         return PULL if self.is_running else None
+
+
+class _VsyncSource:
+    """The swap chain's "ready for a frame" signal, for ``FramePacer``."""
+
+    def __init__(self, lib, handle) -> None:
+        self._lib = lib
+        self._handle = handle
+
+    def wait(self, timeout_ms: int) -> int:
+        """1 on a fresh signal, 2 if one is still unspent, 0 on timeout.
+
+        ctypes releases the GIL for the length of the call.
+        """
+        return int(self._lib.wd_wait(self._handle, int(timeout_ms)))
 
 
 class NativeOverlay:
@@ -317,8 +339,8 @@ class NativeOverlay:
         if not self._fill(params):
             return
         flags = self._lib.wd_frame(
-            self._handle, ctypes.byref(self._params), 1 if frame is PULL else 0,
-            ctypes.byref(self._timings),
+            self._handle, ctypes.byref(self._params),
+            _WANT_PICTURE if frame is PULL else 0, ctypes.byref(self._timings),
         )
         timings = self._timings
         self.last_upload = timings.capture_ms / 1000.0 if flags & _NEW_PICTURE else None
@@ -344,7 +366,8 @@ class NativeOverlay:
         if self._params.profile_end > 0.0:
             self._params.picture_fade = 0.0
             self._lib.wd_frame(
-                self._handle, ctypes.byref(self._params), 0, ctypes.byref(self._timings)
+                self._handle, ctypes.byref(self._params), _MUST_PRESENT,
+                ctypes.byref(self._timings),
             )
 
     def dismiss(self, animated: bool = True) -> None:
@@ -368,6 +391,17 @@ class NativeOverlay:
         self._has_picture = False
         if handle:
             self._lib.wd_destroy(handle)
+
+    # --- For the frame pacer ---------------------------------------------
+
+    @property
+    def vsync(self) -> _VsyncSource | None:
+        """What the frame pacer waits on instead of a timer, while this lives.
+
+        The pacer must be told to stop waiting (``set_vsync_source(None)``)
+        before :meth:`destroy`, which closes what it waits on.
+        """
+        return _VsyncSource(self._lib, self._handle) if self._handle else None
 
     # --- For NativeCapture ------------------------------------------------
 

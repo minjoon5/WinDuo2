@@ -608,16 +608,26 @@ class Engine(QObject):
         self._screen_size = _native_size()
         picture = _picture_size(self._screen_size, self.store.settings.render_width_cap)
         if self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
-            log.info("drawing with the %s renderer", _renderer_name(self.overlay))
+            self._started_renderer()
             return
         if isinstance(self.overlay, native.NativeOverlay):
             # The native renderer could not start here (no DLL support for this
             # display, a rotated screen, a driver refusing): OpenGL instead.
             self._use_overlay(DepthOverlay())
             if self.overlay.warm_up(screen.geometry(), self._screen_size, picture):
-                log.info("drawing with the %s renderer", _renderer_name(self.overlay))
+                self._started_renderer()
                 return
         self._problem = "The graphics driver would not start the renderer."
+
+    def _started_renderer(self) -> None:
+        vsync = getattr(self.overlay, "vsync", None)
+        # The native swap chain says when to draw; the OpenGL path keeps time.
+        self._pacer.set_vsync_source(vsync)
+        log.info(
+            "drawing with the %s renderer, paced by %s",
+            _renderer_name(self.overlay),
+            "the display" if vsync is not None else "a timer",
+        )
 
     def _wanted_overlay(self):
         """The renderer the settings ask for, where it is available."""
@@ -628,6 +638,8 @@ class Engine(QObject):
 
     def _use_overlay(self, overlay) -> None:
         """Swap renderers. Only between runs: the old one is torn down."""
+        # First, so no wait is still running on the swap chain about to close.
+        self._pacer.set_vsync_source(None)
         self._release_capture()
         self.overlay.destroy()
         self.overlay = overlay

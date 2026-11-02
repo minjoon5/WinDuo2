@@ -60,3 +60,67 @@ def test_timer_pacer_ticks_at_about_the_refresh_rate():
     del app
     # 30 at 60 Hz in half a second; leave room for a loaded CI machine.
     assert 20 <= len(ticks) <= 32
+
+
+class _FakeVsync:
+    """Signals every ``period`` seconds, as a swap chain does at each blank."""
+
+    def __init__(self, period: float) -> None:
+        self.period = period
+        self.waits = 0
+
+    def wait(self, timeout_ms: int) -> int:
+        self.waits += 1
+        time.sleep(self.period)
+        return 1
+
+
+def _run_pacer(pacer, seconds: float):
+    from PyQt6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    QTimer.singleShot(int(seconds * 1000), loop.quit)
+    loop.exec()
+
+
+def test_a_vsync_source_paces_the_ticks_instead_of_the_timer():
+    pytest.importorskip("PyQt6")
+    from PyQt6.QtCore import QCoreApplication
+
+    from winduo2.render.pacer import FramePacer
+
+    app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])
+    ticks: list[float] = []
+    # A 30 Hz timer, but a "120 Hz display": the display wins.
+    pacer = FramePacer(lambda: ticks.append(time.monotonic()), refresh_hz=30.0)
+    source = _FakeVsync(1 / 120)
+    pacer.set_vsync_source(source)
+    pacer.start()
+    _run_pacer(pacer, 0.5)
+    pacer.shutdown()
+    del app
+    assert source.waits > 0
+    # 60 at 120 Hz in half a second, not the 15 a 30 Hz timer would give.
+    assert len(ticks) > 30
+
+
+def test_handing_back_to_the_timer_waits_out_any_vsync_wait():
+    pytest.importorskip("PyQt6")
+    from PyQt6.QtCore import QCoreApplication
+
+    from winduo2.render.pacer import FramePacer
+
+    app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])
+    pacer = FramePacer(lambda: None, refresh_hz=60.0)
+    source = _FakeVsync(0.05)
+    pacer.set_vsync_source(source)
+    pacer.start()
+    _run_pacer(pacer, 0.12)
+    pacer.set_vsync_source(None)
+    waits = source.waits
+    _run_pacer(pacer, 0.15)
+    pacer.shutdown()
+    del app
+    # Nothing waits on the old source once it has been handed back.
+    assert source.waits == waits
+    assert not pacer.paced_by_vsync
