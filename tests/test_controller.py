@@ -486,10 +486,10 @@ class TestOpening:
         harness.close(to=95.0)
         harness.controller.lid_shut()
 
-    def test_opening_from_shut_starts_flat_and_grows(self):
+    def test_opening_a_folded_lid_starts_flat_and_grows(self):
+        # Folded to 30 and left there, not shut: opening it spreads.
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        self.shut(harness)
-        frames = self.open_from(harness, 5.0, 100.0)
+        frames = self.open_from(harness, 30.0, 125.0)
         assert frames and all(frame.opening for frame in frames)
         progress = [frame.progress for frame in frames]
         assert progress[0] < 0.1
@@ -498,16 +498,14 @@ class TestOpening:
 
     def test_progress_follows_how_far_the_lid_has_opened(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        self.shut(harness)
-        frames = self.open_from(harness, 5.0, 45.0, rate=30.0)
-        # Opened 40 degrees from 5: 30 past the trigger of a 75 ramp, less
+        frames = self.open_from(harness, 30.0, 70.0, rate=30.0)
+        # Opened 40 degrees from 30: 30 past the trigger of a 75 ramp, less
         # what the spring is still catching up.
         assert frames[-1].progress == pytest.approx(30.0 / 75.0, abs=0.06)
 
     def test_opening_spreads_the_picture_instead_of_leaning_it_back(self):
         harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
-        self.shut(harness)
-        frames = self.open_from(harness, 5.0, 70.0)
+        frames = self.open_from(harness, 30.0, 95.0)
         size = (1920.0, 1080.0)
         corners = harness.controller.corners(frames[-1], size)
         assert corners[2][1] > size[1] and corners[2][0] > size[0]
@@ -552,6 +550,102 @@ class TestOpening:
         harness = Harness(trigger_travel=10.0)
         harness.close(to=30.0, rate=2.0)
         assert harness.controller.phase is Phase.RUNNING
+
+
+class TestReopeningFromShut:
+    """A lid opened from shut plays the close backwards instead of spreading."""
+
+    @staticmethod
+    def rest(harness: Harness, angle: float, frames: int = 30) -> None:
+        for _ in range(frames):
+            harness.now += STEP
+            harness.controller.observe(
+                AngleSample(
+                    travel=0.0, velocity=0.0, confidence=0.9,
+                    timestamp=harness.now, at_rest=True, absolute_angle=angle,
+                ),
+                harness.now,
+            )
+            harness.controller.step(harness.now)
+
+    def reopen(self, harness: Harness, was_open: float = 100.0, to: float = 100.0,
+               rate: float = 60.0, switch: bool = True):
+        """Rest open at ``was_open``, shut, then open from 5 toward ``to``."""
+        self.rest(harness, was_open)
+        if switch:
+            harness.controller.lid_shut()
+        return TestOpening.open_from(harness, 5.0, to, rate=rate)
+
+    def test_it_leans_back_rather_than_spreading(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        frames = self.reopen(harness)
+        assert frames and not any(frame.opening for frame in frames)
+        size = (1920.0, 1080.0)
+        corners = harness.controller.corners(frames[0], size)
+        # The far edge is inside the screen: the trapezoid a close ends on.
+        assert corners[2][1] < size[1] and corners[2][0] < size[0]
+
+    def test_it_starts_where_a_close_ends_and_stands_back_up(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        frames = self.reopen(harness)
+        progress = [frame.progress for frame in frames]
+        assert progress[0] == pytest.approx(1.0)
+        assert all(b <= a + 1e-9 for a, b in zip(progress, progress[1:], strict=False))
+        # Back at the angle it rested open at, the picture is flat or nearly.
+        assert progress[-1] < 0.15
+
+    def test_each_angle_shows_what_the_close_showed_there(self):
+        # Slow, so the spring sits on the lid and frames compare like for like.
+        settings = {"trigger_travel": 10.0, "full_effect_travel": 75.0}
+        closing = Harness(**settings)
+        TestReopeningFromShut.rest(closing, 100.0)
+        closing.close(to=50.0, rate=10.0)
+        reopening = Harness(**settings)
+        frames = self.reopen(reopening, to=50.0, rate=10.0)
+        assert frames[-1].progress == pytest.approx(closing.frame.progress, abs=0.03)
+        assert frames[-1].current_angle == pytest.approx(closing.frame.current_angle, abs=1.5)
+        assert frames[-1].start_angle == pytest.approx(closing.frame.start_angle)
+
+    def test_it_runs_back_to_the_angle_the_lid_rested_open_at(self):
+        harness = Harness(trigger_travel=10.0, full_effect_travel=75.0)
+        frames = self.reopen(harness, was_open=120.0, to=100.0, rate=10.0)
+        # 20 short of 120: 10 past the trigger, still leaning back.
+        assert frames[-1].progress == pytest.approx(10.0 / 75.0, abs=0.03)
+        assert not frames[-1].opening
+
+    def test_opening_past_where_it_rested_does_not_spread(self):
+        harness = Harness(trigger_travel=10.0)
+        frames = self.reopen(harness, to=140.0)
+        assert frames and not any(frame.opening for frame in frames)
+        assert frames[-1].progress == pytest.approx(0.0)
+
+    def test_a_lid_resting_shut_counts_without_the_lid_switch(self):
+        harness = Harness(trigger_travel=10.0)
+        frames = self.reopen(harness, switch=False)
+        assert frames and not any(frame.opening for frame in frames)
+
+    def test_stopping_partway_eases_back_to_flat(self):
+        harness = Harness(trigger_travel=10.0)
+        self.reopen(harness, to=60.0)
+        assert harness.controller.phase is Phase.RUNNING
+        self.rest(harness, 60.0, frames=2)
+        assert harness.controller.phase is Phase.CLOSING_OUT
+        self.rest(harness, 60.0, frames=60)
+        assert harness.controller.phase is Phase.IDLE
+
+    def test_a_lid_that_rested_open_since_spreads_again(self):
+        harness = Harness(trigger_travel=10.0)
+        self.reopen(harness)
+        self.rest(harness, 100.0, frames=90)
+        assert harness.controller.phase is Phase.IDLE
+        frames = TestOpening.open_from(harness, 100.0, 140.0)
+        assert frames and all(frame.opening for frame in frames)
+
+    def test_a_partial_close_opened_again_still_spreads(self):
+        harness = Harness(trigger_travel=10.0)
+        self.rest(harness, 100.0)
+        frames = TestOpening.open_from(harness, 40.0, 120.0)
+        assert frames and frames[-1].opening
 
 
 class TestEaseOut:

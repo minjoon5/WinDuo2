@@ -16,6 +16,12 @@ and the same ramp, driven by how far the lid has opened, with the picture
 spreading up and out rather than leaning back, whether the lid is rising from
 shut or an open screen is being tilted further back.
 
+Except from shut. A lid opened from fully closed does not spread: it plays the
+close backwards, starting leaned back the way a close ends and standing up as
+the lid rises, so shutting and reopening the laptop reads as one movement run
+both ways. The close it reverses is measured from the angle the lid last rested
+open at, the one it is most likely heading back to.
+
 The two are one run, not two. Eased travel is signed, closing positive, and the
 picture leans back or spreads by its sign, so a lid folded a little and then
 opened further than it was folded passes straight through neutral, where both
@@ -96,6 +102,15 @@ def ease_in_out(t: float) -> float:
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 
 
+#: A lid resting below this angle counts as shut, so opening it plays the close
+#: backwards rather than spreading the picture. Hinge sensors report a shut lid
+#: within a few degrees of zero.
+SHUT_ANGLE = 20.0
+
+#: A lid resting at or above this angle counts as open: it is where a reopened
+#: lid is taken to be heading, and resting there forgets an earlier shut.
+OPEN_ANGLE = 45.0
+
 IDLE_INTERVAL = 1.0 / 8
 ACTIVE_INTERVAL = 1.0 / 60
 
@@ -118,7 +133,8 @@ class Frame:
     velocity: float = 0.0
     #: True on the frame that finishes the ease back to flat.
     is_final: bool = False
-    #: True while the lid is being opened and the effect is running backwards.
+    #: True while the lid is being opened and the picture spreads. False for a
+    #: lid opened from shut, which plays the close backwards instead.
     opening: bool = False
 
 
@@ -142,6 +158,16 @@ class EffectController:
         self._confidence = 0.0
         self._at_rest = True
         self._neutral_angle = DEFAULT_NEUTRAL_ANGLE
+        self._absolute_angle = DEFAULT_NEUTRAL_ANGLE
+        #: Where the lid last rested open: what a lid reopened from shut is
+        #: heading back to, and so the start of the close it plays backwards.
+        self._open_angle = DEFAULT_NEUTRAL_ANGLE
+        #: The lid switch reported shut and the lid has not rested open since.
+        #: Waking can reset the estimator with the lid already partly open, so
+        #: the resting angle alone cannot always tell a reopen.
+        self._shut_seen = False
+        #: The current run is a reopen from shut, playing the close backwards.
+        self._reopening = False
         self._sample_time = 0.0
         self._last_closing = -1e9
         self._last_opening = -1e9
@@ -209,12 +235,17 @@ class EffectController:
         self._confidence = sample.confidence
         self._at_rest = sample.at_rest
         self._sample_time = sample.timestamp
+        if sample.absolute_angle > 0:
+            self._absolute_angle = sample.absolute_angle
         # Held for the whole run. Neutral re-zeros when a lid stops partway,
         # which moves this by the full travel in one reading; mid-run that
         # moved the eye the perspective is built around, and the picture
         # stretched up the screen before easing back to flat.
         if sample.absolute_angle > 0 and self.phase is Phase.IDLE:
             self._neutral_angle = sample.absolute_angle + sample.travel
+            if sample.at_rest and self._neutral_angle >= OPEN_ANGLE:
+                self._open_angle = self._neutral_angle
+                self._shut_seen = False
         # Moving is the estimator's call, not a speed threshold here. A speed
         # threshold left a lid folded slowly with no effect at all, and a hand
         # resting on a lid never builds travel anyway: neutral follows it.
@@ -229,6 +260,7 @@ class EffectController:
         if self.phase is not Phase.IDLE:
             log.info("lid shut, ending the effect")
         self._abandon()
+        self._shut_seen = True
 
     # --- Decisions -------------------------------------------------------
 
@@ -248,8 +280,20 @@ class EffectController:
         return travel + speed * (staleness + PREDICTION_LATENCY)
 
     def _target_travel(self) -> float:
-        """Signed, closing positive: the spring follows the lid through neutral."""
+        """Signed, closing positive: the spring follows the lid through neutral.
+
+        A reopen measures from the angle the lid last rested open at instead,
+        as a close from there would, and never goes past it into a spread.
+        """
+        if self._reopening:
+            return max(self._open_angle - self._absolute_angle, 0.0)
         return self._raw_travel
+
+    def _opened_from_shut(self) -> bool:
+        """Whether the lid starting to open now is coming up from shut."""
+        return self._raw_travel < 0.0 and (
+            self._shut_seen or self._neutral_angle < SHUT_ANGLE
+        )
 
     def _wants_closing(self, now: float) -> bool:
         # A lid resting below the threshold must not start the effect by itself,
@@ -285,6 +329,12 @@ class EffectController:
             # first frames and threw away the spring's speed, so the spread
             # started late from a standstill. Inside the band the picture is
             # flat anyway, so staying up costs nothing.
+            #
+            # A reopen is measured from where the lid used to rest rather than
+            # from neutral, so a lid that stops short of it keeps its travel;
+            # coming to rest is what ends it, as it does for any other run.
+            if self._reopening and self._at_rest:
+                return False
             release = settings.trigger_travel - settings.release_hysteresis
             if abs(self._target_travel()) > release:
                 return True
@@ -309,13 +359,23 @@ class EffectController:
             self._begin_closing_out(now)
 
         if self.phase is Phase.IDLE:
+            self._reopening = False
             return None
 
         if self.phase is not Phase.CLOSING_OUT:
             # Fed the lid's speed as well as its place, so the picture keeps
             # pace with a moving lid rather than trailing it, which on the way
             # through neutral held back the start of the other direction.
-            self._travel.advance(self._target_travel(), dt, self._velocity)
+            target = self._target_travel()
+            velocity = self._velocity
+            if self._reopening and target <= 0.0:
+                # Past where the lid rested open the target holds at flat, so
+                # the lid's speed no longer moves it; fed in, it would carry
+                # the picture through flat into a spread.
+                velocity = 0.0
+            self._travel.advance(target, dt, velocity)
+            if self._reopening and self._travel.value < 0.0:
+                self._travel.reset(0.0)
             return self._frame(self._travel.value)
 
         elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION
@@ -330,6 +390,7 @@ class EffectController:
         # land on zero rather than just short of it.
         self._travel.reset(0.0)
         self.phase = Phase.IDLE
+        self._reopening = False
         return self._frame(0.0, is_final=True)
 
     # --- Frame construction ----------------------------------------------
@@ -413,6 +474,17 @@ class EffectController:
     def _begin(self, now: float) -> None:
         self.phase = Phase.RUNNING
         self._started_at = now
+        self._reopening = self._opened_from_shut()
+        if self._reopening:
+            # The close being played backwards starts where the lid rested
+            # open, so that is where the perspective's eye goes.
+            self._neutral_angle = self._open_angle
+            self._shut_seen = False
+            log.info(
+                "effect on (reopening from shut): back to %.1f deg from %.1f",
+                self._open_angle,
+                self._absolute_angle,
+            )
         opening = self._target_travel() < 0.0
         # Start from where the lid actually is, so the picture does not sweep in
         # from flat after a fast close has already passed the threshold.
@@ -451,6 +523,7 @@ class EffectController:
     def _abandon(self) -> None:
         """Stop now, with no ease and no fade. For sleep and for a shut lid."""
         self.phase = Phase.IDLE
+        self._reopening = False
         self._travel.reset(0.0)
         self._last_closing = -1e9
         self._last_opening = -1e9
