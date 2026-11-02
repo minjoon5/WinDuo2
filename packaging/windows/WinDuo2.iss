@@ -2,14 +2,14 @@
 ;
 ; Windows only grants uiAccess to an executable that asks for it in its
 ; manifest, is signed by a certificate the machine trusts, and sits in a secure
-; location such as Program Files. PyInstaller writes the manifest
-; (--uac-uiaccess); the "selfsign" task below signs it on the PC with a
+; location such as Program Files. The uiAccess build's manifest asks for it
+; (native/app/winduo2_uiaccess.manifest); the "selfsign" task below signs it on the PC with a
 ; certificate made there, unless CI already signed it with one the PC trusts;
 ; and this installer puts it in Program Files. uiAccess is what lets the overlay sit
 ; above Start, search and quick settings, so they are blurred instead of closed.
 ;
-; Built by .github/workflows/release.yml from the --onedir output in
-; dist\WinDuo2. By hand, from the repository root:
+; Built by .github/workflows/release.yml from the native uiAccess exe staged
+; in dist\WinDuo2. By hand, from the repository root:
 ;   iscc packaging\windows\WinDuo2.iss
 ;
 ; There is no version number. AppVerName stands in for the AppVersion Inno

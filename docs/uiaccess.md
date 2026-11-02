@@ -30,11 +30,11 @@ Windows grants uiAccess only when all three of these hold. If any one is missing
 
 ### 1. The manifest
 
-PyInstaller writes it with `--uac-uiaccess`. The `installer` variant in `.github/workflows/release.yml` builds with `--onedir --uac-uiaccess`, and a CI step fails the build if the manifest lacks `uiAccess="true"`.
+`native/app/winduo2_uiaccess.manifest` asks for it, and CMake builds that variant of the exe (`native/build/app/uiaccess/WinDuo2.exe`) alongside the plain one. A CI step fails the release if the manifest lacks `uiAccess="true"`.
 
-It is a folder build, not `--onefile`. A one-file build unpacks its code into `%TEMP%`, which any program running as the user can write to. That would defeat the point of requiring a location only administrators can change.
+The exe is self-contained: nothing is unpacked to `%TEMP%` or loaded from beside it, which matters because requiring a location only administrators can change is the whole point.
 
-The exe cannot be started on the CI runner, because it is not under Program Files there. The portable variant's `--help` check covers the same bundle starting cleanly.
+The exe cannot be started on the CI runner, because it is not under Program Files there. The plain variant's `--selftest` covers the same code.
 
 ### 2. The signature
 
@@ -115,7 +115,7 @@ With a certificate that chains to a public root, no PC needs any of the above. S
 
 Do not move the folder or loosen its permissions. Anywhere else, Windows refuses to start the exe.
 
-To build the installer by hand, from the repository root, after the `--onedir` PyInstaller build:
+To build the installer by hand, from the repository root, after `native/build.ps1` and copying `native/build/app/uiaccess/WinDuo2.exe` to `dist\WinDuo2\`:
 
 ```bat
 iscc packaging\windows\WinDuo2.iss
@@ -131,7 +131,7 @@ A uiAccess exe needs one change here. Task Scheduler starts programs with a plai
 C:\Windows\System32\rundll32.exe shell32.dll,ShellExec_RunDLL "C:\Program Files\WinDuo2\WinDuo2.exe" --autostart
 ```
 
-The portable build and a source install register the exe (or `pythonw -m winduo2`) directly, as before.
+The portable build registers the exe directly, as before.
 
 WinDuo2 rewrites the task every time it starts. Settings live in `%APPDATA%\WinDuo2` and are shared by every build. So after switching from the portable exe to the installed one, start the installed one once and the task points at it. You do not have to delete the old task by hand.
 
@@ -199,7 +199,7 @@ If anything is left over, open `certlm.msc` and delete *WinDuo2 local uiAccess s
 - **Method A keeps a key on the PC.** It is non-exportable and usable only by administrators and SYSTEM. Anyone at that level can already trust any certificate, so this grants no one new power, but it does mean any administrator-level program on that PC could sign things it trusts.
 - **The private key is the trust.** With method B, the private key exists only in the GitHub secret. Anyone who gets it can build programs that receive uiAccess on every PC that trusts the certificate. Anyone with write access to the repository can change a workflow to read the secret. Workflows run for pull requests from forks do not receive secrets. If the key may have leaked, use `-Replace`.
 - **Delete the secret files.** Remove `WINDOWS_CERT_PFX.txt` and `WINDOWS_CERT_PASSWORD.txt` as soon as the secrets are saved, especially if the desktop syncs to the cloud.
-- **Only `WinDuo2.exe` is signed.** The DLLs in `_internal` are not. They rely on Program Files being writable only by administrators, so do not loosen the folder's permissions.
+- **Only `WinDuo2.exe` is signed,** and it is the whole program: no DLLs ship beside it. Still, do not loosen the folder's permissions.
 - **Only trust builds you made.** Do not run these scripts on a build from somewhere else. Doing so gives that code uiAccess.
 - **Not on managed PCs.** On a work or school PC, group policy may manage the root store or the UIAccess policy. These steps may not work there and may break its rules.
 - **Expiry.** Both certificates last 10 years. CI timestamps its signatures, so method B builds stay valid after the certificate expires. Method A signatures are not timestamped, and the script makes a new certificate once the old one is within 30 days of expiring, so the next install or update after that picks it up.

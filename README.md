@@ -12,20 +12,15 @@ Windows 10 (2004+) and 11 · Free for noncommercial use, [PolyForm Noncommercial
 
 ## Install
 
-**Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/WinDuo2/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
+**Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/WinDuo2/releases/latest). One native file of about two megabytes, nothing else to install. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
 
 **To blur Start and quick settings too:** install with `WinDuo2-Setup.exe` from the same release instead. It installs under Program Files with *uiAccess*, which puts the effect above Start, search, the notification centre and quick settings, so they stay open and blur with everything else instead of closing. Windows only grants uiAccess to an exe signed by a certificate the PC trusts and installed under Program Files, and refuses to start it otherwise. The installer takes care of both: it installs under Program Files and, with *Sign WinDuo2 with a certificate made on this PC* left ticked, signs the exe with a certificate it makes on your PC, again on every update. **[docs/uiaccess.md](docs/uiaccess.md)** has the details, signing through CI instead, starting at sign-in, checking it works, and uninstalling.
 
-**From source:**
+**From source:** with Visual Studio's C++ tools and CMake, run `native/build.ps1`. It builds `native/build/app/plain/WinDuo2.exe`, and the uiAccess variant beside it.
 
-```sh
-pip install git+https://github.com/minjoon5/WinDuo2
-python -m winduo2
-```
+WinDuo2 sits in the notification area. Right-click it for settings. *Start with Windows* is on from the first run, so it runs every time you sign in; untick it in the settings to stop that. It is registered as a *WinDuo2* task in Task Scheduler that runs as soon as you sign in, rather than as a Task Manager startup app, which Windows holds back for a while after sign-in; it waits only for the taskbar to appear. The settings window opens by itself only the very first time WinDuo2 runs, never at sign-in.
 
-WinDuo2 sits in the notification area. Right-click it for settings. *Start with Windows* is on from the first run, so it runs every time you sign in; untick it in the settings to stop that. It is registered as a *WinDuo2* task in Task Scheduler that runs as soon as you sign in, rather than as a Task Manager startup app, which Windows holds back for a while after sign-in. The settings window opens by itself only the very first time WinDuo2 runs, never at sign-in.
-
-To check that your laptop has a sensor WinDuo2 can read, run `python -m winduo2 --sensors` and move the lid: it prints the angle it sees for twenty seconds. `python -m winduo2 --preview` plays the effect once on whatever is on screen.
+To check that your laptop has a sensor WinDuo2 can read, run `WinDuo2.exe --sensors` from a terminal and move the lid: it prints the angle it sees for twenty seconds. `WinDuo2.exe --preview` plays the effect once on whatever is on screen.
 
 ## How it follows the lid
 
@@ -46,9 +41,9 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 ## How it draws
 
-The released app draws with a native Direct3D 11 renderer (`native/winduo2_native.cpp`). The screen is captured with Desktop Duplication and never leaves the graphics card: it is scaled, its blur levels are built and the effect is drawn there, and the overlay is a DirectComposition surface that Windows composes directly, with fades that Windows runs by itself. It draws at the display's own refresh rate, 120 frames a second on a 120 Hz panel.
+WinDuo2 is native C++ throughout (`native/`): the effect's logic in `native/core`, the sensors, tray and settings in `native/app`, and a Direct3D 11 renderer in `native/winduo2_native.cpp`. The screen is captured with Desktop Duplication and never leaves the graphics card: it is scaled, its blur levels are built and the effect is drawn there, and the overlay is a DirectComposition surface that Windows composes directly, with fades that Windows runs by itself. It draws at the display's own refresh rate, 120 frames a second on a 120 Hz panel.
 
-The OpenGL renderer it replaced is still there. WinDuo2 falls back to it if the native renderer cannot start, for example on a rotated screen, and *Draw with Direct3D* in the settings switches between them. After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `effect run:` line with the frame rate reached, how many frames missed their refresh, and where the time went.
+After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `effect run:` line with the frame rate reached, how many frames missed their refresh, and where the time went.
 
 ## Known limits
 
@@ -56,10 +51,10 @@ The OpenGL renderer it replaced is still there. WinDuo2 falls back to it if the 
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
 - **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see [docs/uiaccess.md](docs/uiaccess.md)). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
-- Primary display only.
+- Primary display only, and only while it is upright: on a rotated screen the effect is off.
 
 ## Contributing
 
-`pip install -e ".[dev]"` then `pytest`. The tests need no sensor or lid.
+Build with `native/build.ps1`, then `native/build/app/plain/WinDuo2.exe --selftest`: it compiles every shader and draws real frames on WARP, Windows' software renderer, with no GPU or display needed, and runs a close through the effect's logic.
 
-To build the native renderer, with Visual Studio's C++ tools and CMake, run `native/build.ps1`; it puts `winduo2_native.dll` in `winduo2/render/`. Without it a source install draws with OpenGL. With it, `pytest` also runs the renderer's self-test, which compiles every shader and draws real frames on WARP, Windows' software renderer, with no GPU needed.
+The app began in Python, and that implementation (`winduo2/`) is kept as the reference the C++ core is checked against: `pip install -e ".[dev]"` then `pytest` drives both with the same lid readings, step by step, and compares every estimate, decision and frame (`tests/test_core_parity.py`). The C++ core builds on Linux too, so this runs anywhere with g++.
