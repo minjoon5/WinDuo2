@@ -109,9 +109,20 @@ bool PreviewSweep::travel(double now, double& out) const {
     return false;
 }
 
+// The rate of change of travel(): zero while the sweep holds, reversed as it
+// comes back; see app.py.
+double PreviewSweep::one_way_rate(double elapsed) const {
+    if (elapsed < closing) return (deep - rest) / closing;
+    if (elapsed < closing + hold) return 0.0;
+    if (elapsed < half()) return (rest - deep) / opening;
+    return 0.0;
+}
+
 double PreviewSweep::velocity_at(double now) const {
-    double v = deep / closing;
-    return now - started_at < half() ? v : -v;
+    double elapsed = now - started_at;
+    if (elapsed < half()) return one_way_rate(elapsed);
+    if (elapsed < duration()) return -one_way_rate(elapsed - half());
+    return 0.0;
 }
 
 // ---------------------------------------------------------------------------

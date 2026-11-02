@@ -87,12 +87,33 @@ class PreviewSweep:
         return None
 
     def velocity_at(self, now: float) -> float:
-        """Degrees per second, signed like travel: closing, then opening."""
-        return self.velocity if now - self.started_at < self.half else -self.velocity
+        """Degrees per second, signed like travel: how fast the sweep is moving.
+
+        The rate of change of :meth:`travel` at that moment, so it is zero
+        while the sweep holds and reverses as it comes back. It used to be the
+        closing speed throughout, which kept the motion blur on through the
+        hold and told the controller the picture was still heading away.
+        """
+        elapsed = now - self.started_at
+        if elapsed < self.half:
+            return self._one_way_rate(elapsed)
+        if elapsed < self.duration:
+            return -self._one_way_rate(elapsed - self.half)
+        return 0.0
 
     @property
     def velocity(self) -> float:
+        """The closing speed, degrees per second."""
         return self.deep / self.closing
+
+    def _one_way_rate(self, elapsed: float) -> float:
+        if elapsed < self.closing:
+            return (self.deep - self.rest) / self.closing
+        if elapsed < self.closing + self.hold:
+            return 0.0
+        if elapsed < self.half:
+            return (self.rest - self.deep) / self.opening
+        return 0.0
 
     def _one_way(self, elapsed: float) -> float:
         if elapsed < self.closing:

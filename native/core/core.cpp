@@ -654,6 +654,20 @@ double tilt_knee(double travel, double limit) {
     return limit * std::tanh(travel / limit);
 }
 
+// The ease-out's speed term and the speed it carries; see controller.py.
+static const double CARRY_LIMIT = 3.0;
+
+static double carry(double t) {
+    t = std::min(std::max(t, 0.0), 1.0);
+    return t * (1.0 - t) * (1.0 - t) * (1.0 - t);
+}
+
+static double carried_speed(double value, double velocity) {
+    if (value == 0.0 || value * velocity >= 0.0) return 0.0;
+    double limit = CARRY_LIMIT * std::fabs(value) / CLOSING_OUT_DURATION;
+    return std::max(-limit, std::min(limit, velocity));
+}
+
 double ease_in_out(double t) {
     t = std::min(std::max(t, 0.0), 1.0);
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
@@ -781,7 +795,8 @@ bool EffectController::step(double now, Frame& out) {
     double elapsed = (now - closing_out_since_) / CLOSING_OUT_DURATION;
     if (elapsed < 1.0) {
         double previous = travel_spring_.value;
-        travel_spring_.reset(closing_out_from_ * (1.0 - ease_in_out(elapsed)));
+        travel_spring_.reset(closing_out_from_ * (1.0 - ease_in_out(elapsed)) +
+                             closing_out_speed_ * CLOSING_OUT_DURATION * carry(elapsed));
         travel_spring_.velocity = (travel_spring_.value - previous) / dt;
         out = frame(travel_spring_.value);
         return true;
@@ -851,6 +866,7 @@ void EffectController::begin_closing_out(double now) {
     phase = Phase::ClosingOut;
     closing_out_since_ = now;
     closing_out_from_ = travel_spring_.value;
+    closing_out_speed_ = carried_speed(travel_spring_.value, travel_spring_.velocity);
     log_info("effect easing out: travel %.1f deg", raw_travel_);
 }
 

@@ -95,6 +95,34 @@ MINIMUM_DURATION = 0.3
 CLOSING_OUT_DURATION = 0.6
 
 
+#: How much of the picture's speed the ease-out may carry on with, as a
+#: multiple of where it starts over the ease's length. Up to 6 the ease never
+#: passes through flat; 3 leaves room.
+CARRY_LIMIT = 3.0
+
+
+def _carry(t: float) -> float:
+    """The ease-out's speed term: 0 at both ends, slope 1 at the start and flat
+    at the end, so the picture leaves at the speed it had and lands at rest."""
+    t = min(max(t, 0.0), 1.0)
+    return t * (1.0 - t) ** 3
+
+
+def _carried_speed(value: float, velocity: float) -> float:
+    """The picture's speed, kept into the ease-out when it is heading for flat.
+
+    The ease alone starts from a standstill, so a picture already moving back,
+    as at the end of the preview's opening or a lid stopping as it reaches
+    rest, stopped dead for a moment and then set off again. Speed away from
+    flat is dropped instead, and speed toward it capped, so the ease never
+    overshoots flat.
+    """
+    if value == 0.0 or value * velocity >= 0.0:
+        return 0.0
+    limit = CARRY_LIMIT * abs(value) / CLOSING_OUT_DURATION
+    return max(-limit, min(limit, velocity))
+
+
 def ease_in_out(t: float) -> float:
     """Smootherstep: zero speed at both ends, so the return neither jerks into
     motion nor lands with a bump."""
@@ -180,6 +208,7 @@ class EffectController:
         self._started_at = 0.0
         self._closing_out_since = 0.0
         self._closing_out_from = 0.0
+        self._closing_out_speed = 0.0
         self._last_frame_time = 0.0
         self._suspended = False
 
@@ -399,7 +428,10 @@ class EffectController:
         elapsed = (now - self._closing_out_since) / CLOSING_OUT_DURATION
         if elapsed < 1.0:
             previous = self._travel.value
-            self._travel.reset(self._closing_out_from * (1.0 - ease_in_out(elapsed)))
+            self._travel.reset(
+                self._closing_out_from * (1.0 - ease_in_out(elapsed))
+                + self._closing_out_speed * CLOSING_OUT_DURATION * _carry(elapsed)
+            )
             # Kept, so a run taken up again carries on at the ease's pace.
             self._travel.velocity = (self._travel.value - previous) / dt
             return self._frame(self._travel.value)
@@ -537,6 +569,7 @@ class EffectController:
         self.phase = Phase.CLOSING_OUT
         self._closing_out_since = now
         self._closing_out_from = self._travel.value
+        self._closing_out_speed = _carried_speed(self._travel.value, self._travel.velocity)
         log.info("effect easing out: travel %.1f deg", self._raw_travel)
 
     def _abandon(self) -> None:

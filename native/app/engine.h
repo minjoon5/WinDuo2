@@ -42,6 +42,7 @@ struct PreviewSweep {
 
 private:
     double one_way(double elapsed) const;
+    double one_way_rate(double elapsed) const;
 };
 
 class Engine {

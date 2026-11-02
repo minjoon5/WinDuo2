@@ -248,6 +248,7 @@ private:
     double started_at_ = 0.0;
     double closing_out_since_ = 0.0;
     double closing_out_from_ = 0.0;
+    double closing_out_speed_ = 0.0;
     double last_frame_time_ = 0.0;
     bool suspended_ = false;
 };
