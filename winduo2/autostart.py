@@ -3,8 +3,8 @@
 It used to be an entry under the per-user ``Run`` key in the registry, the one
 Task Manager lists under *Startup apps*. Explorer holds those back after
 sign-in and starts them at low priority, so WinDuo2 could take a minute to
-appear, and a lid closed in that minute did nothing. A logon task starts as
-soon as the user is signed in.
+appear, and a lid closed in that minute did nothing. A logon task starts a
+few seconds after the user is signed in (see ``LOGON_DELAY``).
 
 The task is the current user's own, runs without elevation, and is registered
 from XML because ``schtasks`` offers no switches for the settings that matter
@@ -36,11 +36,19 @@ from winduo2.log import get_logger
 
 log = get_logger("autostart")
 
-__all__ = ["FLAG", "command", "is_supported", "sync", "task_xml"]
+__all__ = ["FLAG", "LOGON_DELAY", "command", "is_supported", "sync", "task_xml"]
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "WinDuo2"
 TASK_NAME = "WinDuo2"
+
+#: How long after sign-in the task waits before starting WinDuo2. Started the
+#: instant the user signed in, the installed uiAccess build hung before its
+#: first log line, spinning a core with no tray icon, while the same task run
+#: a little later started normally. The desktop is still being put together at
+#: that moment; a short wait is still far sooner than a Run key entry, which
+#: Explorer holds back for much longer.
+LOGON_DELAY = "PT15S"
 
 #: Passed on the command line at sign-in, so a start Windows made can be told
 #: apart from one the user made. Nothing opens on its own at sign-in.
@@ -103,6 +111,7 @@ def task_xml(user: str | None = None) -> str:
     <LogonTrigger>
       <Enabled>true</Enabled>
       <UserId>{escape(user)}</UserId>
+      <Delay>{LOGON_DELAY}</Delay>
     </LogonTrigger>
   </Triggers>
   <Principals>

@@ -9,6 +9,7 @@ what the lid sensor reads, with no window, to check that this machine has one.
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 
@@ -55,6 +56,13 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     options = _parse(argv)
     setup_logging(options.verbose)
+    log.info(
+        "WinDuo2 %s starting, pid %d%s",
+        __version__,
+        os.getpid(),
+        " (started at sign-in)" if options.autostart else "",
+    )
+    hang_report = _watch_for_a_hung_start()
 
     if sys.platform != "win32" and not sys.platform.startswith("linux"):
         print(
@@ -65,8 +73,6 @@ def main(argv: list[str] | None = None) -> int:
     if options.sensors:
         return _print_sensor()
     if sys.platform.startswith("linux"):
-        import os
-
         # The overlay has to be a native Wayland window for Hyprland to float
         # and pin it; under XWayland it would be an X11 window it cannot place.
         os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
@@ -139,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         _since_boot(),
         ", with uiAccess" if win32.has_ui_access() else "",
     )
+    _stop_watching(hang_report)
     code = app.exec()
     engine.stop()
     return code
@@ -209,6 +216,48 @@ def _since_boot() -> str:
     getter = ctypes.windll.kernel32.GetTickCount64
     getter.restype = ctypes.c_ulonglong
     return f", {getter() / 1000.0:.0f} s after the machine started"
+
+
+#: A start that has not reached "ready" in this long has hung somewhere.
+HANG_TIMEOUT = 60.0
+
+
+def _watch_for_a_hung_start():
+    """Dump every thread's stack to a file if startup never finishes.
+
+    A start that hangs before the first window, as the installed build once did
+    at sign-in, leaves no other trace: nothing reaches the log and the windowed
+    exe has no console. ``faulthandler`` writes from its own thread, so it works
+    even when the main thread is stuck inside native code. Returns the open
+    file, to be handed to :func:`_stop_watching`, or None.
+    """
+    import faulthandler
+
+    from winduo2.log import APP_DIR
+
+    try:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+        report = open(APP_DIR / "winduo2-hang.txt", "w", encoding="utf-8")  # noqa: SIM115
+        faulthandler.dump_traceback_later(HANG_TIMEOUT, repeat=False, file=report)
+    except (OSError, ValueError, RuntimeError):
+        log.debug("could not watch for a hung start", exc_info=True)
+        return None
+    return report
+
+
+def _stop_watching(report) -> None:
+    """Startup finished: cancel the dump and drop the empty report."""
+    import contextlib
+    import faulthandler
+
+    if report is None:
+        return
+    faulthandler.cancel_dump_traceback_later()
+    path = report.name
+    report.close()
+    with contextlib.suppress(OSError):
+        if os.path.getsize(path) == 0:
+            os.remove(path)
 
 
 def _follow_launch_at_login(store) -> None:
