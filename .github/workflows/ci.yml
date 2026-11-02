@@ -21,10 +21,16 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
 
-      - name: Build the native renderer
-        # The tests load it and run its self-test on WARP, which compiles
-        # every shader and draws real frames with no GPU or display.
+      - name: Build the native app, renderer and core
+        # The tests load the renderer and run its self-test on WARP, and check
+        # the C++ core against the Python step by step.
         run: ./native/build.ps1
+        shell: pwsh
+
+      - name: The native app starts and draws
+        run: |
+          $p = Start-Process native/build/app/plain/WinDuo2.exe -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "the self-test failed ($($p.ExitCode))" }
         shell: pwsh
 
       - name: Install

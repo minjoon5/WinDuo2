@@ -10,11 +10,11 @@ permissions:
 
 jobs:
   build:
-    # Two builds from the same bundle:
+    # Two builds of the same native code:
     #
     # - portable: the single WinDuo2.exe, run from anywhere. Start, search and
     #   quick settings are closed when the effect starts.
-    # - installer: a folder build whose manifest asks for uiAccess, installed
+    # - installer: the same exe with a manifest that asks for uiAccess, installed
     #   under Program Files by WinDuo2-Setup.exe. uiAccess puts the overlay
     #   above those flyouts so they are blurred instead. Windows only grants it
     #   to a signed exe, so it is signed here when the WINDOWS_CERT_PFX
@@ -22,146 +22,44 @@ jobs:
     #   from packaging/windows/make-signing-cert.ps1; a PC that trusts that
     #   certificate once runs every later release. Without them it is left
     #   for packaging/windows/trust-self-signed.ps1 to sign on the user's own
-    #   machine, which the installer does by default. It is a folder, not
-    #   --onefile, because a one-file build unpacks its code into %TEMP%,
-    #   which defeats the point of requiring a location only administrators
-    #   can write to.
+    #   machine, which the installer does by default. Both are one exe with
+    #   nothing unpacked anywhere at run time, which a location only
+    #   administrators can write to depends on.
     strategy:
       matrix:
         include:
           - variant: portable
-            layout: --onefile
           - variant: installer
-            layout: --onedir --uac-uiaccess
     runs-on: windows-latest
     env:
       HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Build the native renderer
+      - name: Build the app
+        # All native: the effect, the sensors, the tray and the settings, in
+        # one exe with no Python, Qt or other runtime beside it.
         run: ./native/build.ps1
         shell: pwsh
 
-      - name: Install
+      - name: Check it starts and draws
+        # --selftest compiles every shader and draws real frames on WARP, and
+        # runs the effect's logic through a close. The uiAccess exe cannot run
+        # here (Windows refuses one outside Program Files); it is the same code.
         run: |
-          pip install -e .
-          pip install pyinstaller==6.11.1
-
-      - name: Check the native renderer draws
-        # Compiles every shader and draws real frames on WARP. A release whose
-        # renderer would fall back to OpenGL on every machine fails here.
-        run: python -c "from winduo2.render import native; ok, why = native.selftest(); print(why); raise SystemExit(0 if ok else 1)"
-
-      - name: Remove OpenCV's unused video-file decoder before packaging
-        # opencv_videoio_ffmpeg is ~29 MB and is only consulted by
-        # cv2.VideoCapture when opening a video *file*; this app only uses
-        # OpenCV to resize captured screen frames, so the plugin is dead
-        # weight. It has to be deleted from cv2's own install directory before
-        # PyInstaller runs: for a --onefile build everything is packed into
-        # the exe during the build itself, so nothing is left in dist/
-        # afterward to strip, and --exclude-module only applies to importable
-        # Python modules, not raw DLLs that a hook collects as data.
-        run: |
-          $cv2Path = python -c "import cv2, os; print(os.path.dirname(cv2.__file__))"
-          Get-ChildItem -Path $cv2Path -Filter "*ffmpeg*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "Removing $($_.FullName) ($([math]::Round($_.Length / 1MB, 1)) MB)"
-            Remove-Item $_.FullName -Force
-          }
+          $p = Start-Process native/build/app/plain/WinDuo2.exe -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "the self-test failed ($($p.ExitCode))" }
         shell: pwsh
 
-      - name: Build
-        # No console window; one file or one folder, per the matrix above.
-        #
-        # --collect-all PyQt6 used to pull in the whole Qt distribution: Quick,
-        # Qml, Quick3D, Designer, Pdf, WebEngine, Bluetooth, Sql, every
-        # QuickControls2 style, and translations for every locale, none of
-        # which this app imports. The app only uses QtCore, QtGui, QtWidgets,
-        # and QtOpenGLWidgets, so --collect-submodules targets exactly those,
-        # and the --exclude-module list removes the plugin categories
-        # PyInstaller otherwise collects alongside them because they share a
-        # QtCore dependency. This took the build from roughly 150 MB to well
-        # under half that.
-        #
-        # cv2 and OpenGL still need --collect-all: both load compiled
-        # extensions and, for OpenGL, GL functions via ctypes at runtime, which
-        # PyInstaller's static import scan cannot see coming. OpenCV's own
-        # FFmpeg video-file plugin is excluded because the app never opens a
-        # video file, so that decoder is dead weight.
-        #
-        # winrt is collected whole: the sensor projections are imported on the
-        # sensor thread, inside functions, where the static scan does not look.
-        #
-        # numpy needs the same --collect-all: cv2 imports it at C level, and
-        # PyInstaller's static scan misses numpy's compiled extension
-        # submodules (numpy.core._multiarray_umath and friends) often enough
-        # that "Importing the numpy C-extensions failed" is the single most
-        # common PyInstaller failure with numpy. --copy-metadata numpy is
-        # needed too, because numpy reads its own dist-info at import time to
-        # resolve its version, and a --onefile build has none unless it is
-        # copied in explicitly.
-        run: >
-          pyinstaller
-          ${{ matrix.layout }}
-          --noconsole
-          --name WinDuo2
-          --icon winduo2/ui/icon.ico
-          --add-data winduo2/ui/icon.png:winduo2/ui
-          --add-data winduo2/ui/check.png:winduo2/ui
-          --add-data winduo2/ui/check@2x.png:winduo2/ui
-          --add-binary winduo2/render/winduo2_native.dll:winduo2/render
-          --collect-submodules PyQt6.QtCore
-          --collect-submodules PyQt6.QtGui
-          --collect-submodules PyQt6.QtWidgets
-          --collect-submodules PyQt6.QtOpenGLWidgets
-          --collect-all cv2
-          --collect-all OpenGL
-          --collect-all dxcam
-          --collect-all numpy
-          --collect-all winrt
-          --copy-metadata numpy
-          --exclude-module PyQt6.QtQml
-          --exclude-module PyQt6.QtQuick
-          --exclude-module PyQt6.QtQuick3D
-          --exclude-module PyQt6.QtQuickWidgets
-          --exclude-module PyQt6.QtQuickControls2
-          --exclude-module PyQt6.QtDesigner
-          --exclude-module PyQt6.QtPdf
-          --exclude-module PyQt6.QtPdfWidgets
-          --exclude-module PyQt6.QtWebEngineCore
-          --exclude-module PyQt6.QtWebEngineWidgets
-          --exclude-module PyQt6.QtWebSockets
-          --exclude-module PyQt6.QtMultimedia
-          --exclude-module PyQt6.QtMultimediaWidgets
-          --exclude-module PyQt6.QtBluetooth
-          --exclude-module PyQt6.QtNfc
-          --exclude-module PyQt6.QtSql
-          --exclude-module PyQt6.QtTest
-          --exclude-module PyQt6.QtSensors
-          --exclude-module PyQt6.QtSerialPort
-          --exclude-module PyQt6.QtPositioning
-          --exclude-module PyQt6.QtHelp
-          --exclude-module PyQt6.QtDBus
-          --exclude-module PyQt6.QtDesigner
-          --exclude-module PyQt6.QtNetwork
-          --exclude-module PyQt6.QtSvgWidgets
-          --exclude-module PyQt6.QtRemoteObjects
-          --exclude-module PyQt6.QtXml
-          --exclude-module PyQt6.QtXmlPatterns
-          --exclude-module tkinter
-          --exclude-module matplotlib
-          winduo2/__main__.py
-
-      - name: Check it starts
-        if: matrix.variant == 'portable'
-        # --help exits before any window, sensor, or GPU work, so it checks that
-        # the bundle and its bootloader start on a machine with no dev setup.
-        run: ./dist/WinDuo2.exe --help
+      - name: Stage
+        run: |
+          New-Item -ItemType Directory -Force dist/WinDuo2 | Out-Null
+          if ("${{ matrix.variant }}" -eq "portable") {
+            Copy-Item native/build/app/plain/WinDuo2.exe dist/WinDuo2.exe
+          } else {
+            Copy-Item native/build/app/uiaccess/WinDuo2.exe dist/WinDuo2/WinDuo2.exe
+          }
+        shell: pwsh
 
       - name: Check the manifest asks for uiAccess
         if: matrix.variant == 'installer'

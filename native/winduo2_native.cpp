@@ -1052,6 +1052,15 @@ WD_API int wd_frame(void* handle, const WdParams* params, int flags, WdTimings* 
     return static_cast<Renderer*>(handle)->frame(*params, flags, timings);
 }
 
+// The swap chain's "ready for a frame" handle, for a loop that waits on it
+// alongside other things (MsgWaitForMultipleObjectsEx). A loop that does must
+// call wd_signalled when the wait returns it, since that wait spent the signal.
+WD_API void* wd_waitable(void* handle) { return static_cast<Renderer*>(handle)->frame_ready; }
+WD_API void wd_signalled(void* handle) { static_cast<Renderer*>(handle)->permit = true; }
+WD_API int wd_holds_signal(void* handle) {
+    return static_cast<Renderer*>(handle)->permit ? 1 : 0;
+}
+
 // Waits for the swap chain to want a frame; see Renderer::wait. Safe to call
 // from another thread than the one drawing, but not while wd_destroy runs.
 WD_API int wd_wait(void* handle, int timeout_ms) {

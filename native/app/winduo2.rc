@@ -1,0 +1,12 @@
+// The icon, and the manifest: per-monitor DPI awareness, common controls 6,
+// and uiAccess for the installed build (WD_UIACCESS).
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP ICON "../../winduo2/ui/icon.ico"
+
+#ifdef WD_UIACCESS
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "winduo2_uiaccess.manifest"
+#else
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "winduo2.manifest"
+#endif
