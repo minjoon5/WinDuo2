@@ -156,13 +156,14 @@ public:
 private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK slider_proc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-    LRESULT handle(UINT, WPARAM, LPARAM);
+    LRESULT handle(HWND, UINT, WPARAM, LPARAM);
     void create_controls();
-    void layout();
+    void layout();       // the header, the footer and the body between them
+    void layout_body();  // the controls inside the scrolling body
     void make_fonts();
     void destroy_fonts();
     int px(double dips) const { return (int)std::lround(dips * dpi_ / 96.0); }
-    HWND label(const wchar_t* text, HFONT font);
+    HWND label(HWND parent, const wchar_t* text, HFONT font);
     void set_value_text(int index);
     double slider_value(int index) const;
     void scroll_to(int offset);
@@ -170,8 +171,11 @@ private:
     SettingsStore& store_;
     Engine& engine_;
     HWND hwnd_ = nullptr;
+    // Everything but the reading and the buttons sits in ``body_``, which
+    // scrolls; the reading stays at the top and the buttons at the bottom.
+    HWND body_ = nullptr;
     UINT dpi_ = 96;
-    int scroll_ = 0, content_height_ = 0;
+    int scroll_ = 0, content_height_ = 0, header_height_ = 0, footer_height_ = 0;
     bool loading_ = false;
     HFONT font_ = nullptr, small_ = nullptr, heading_ = nullptr, big_ = nullptr;
     HBRUSH background_ = nullptr;
@@ -186,6 +190,7 @@ private:
 };
 
 static const wchar_t* SETTINGS_CLASS = L"WinDuo2Settings";
+static const wchar_t* SETTINGS_BODY_CLASS = L"WinDuo2SettingsBody";
 
 void SettingsWindow::show() {
     if (!hwnd_) {
@@ -198,12 +203,19 @@ void SettingsWindow::show() {
         wc.hIcon = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(IDI_APP));
         wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
         RegisterClassExW(&wc);
+        wc.lpszClassName = SETTINGS_BODY_CLASS;
+        wc.hIcon = nullptr;
+        RegisterClassExW(&wc);
         dpi_ = GetDpiForSystem();
         hwnd_ = CreateWindowExW(0, SETTINGS_CLASS, L"WinDuo2 settings",
-                                WS_OVERLAPPEDWINDOW | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT,
-                                px(560), px(760), nullptr, nullptr, wc.hInstance, this);
+                                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT,
+                                CW_USEDEFAULT, px(560), px(760), nullptr, nullptr, wc.hInstance,
+                                this);
         if (!hwnd_) return;
         dpi_ = GetDpiForWindow(hwnd_);
+        body_ = CreateWindowExW(WS_EX_CONTROLPARENT, SETTINGS_BODY_CLASS, L"",
+                                WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_CLIPCHILDREN, 0, 0, 10, 10,
+                                hwnd_, nullptr, wc.hInstance, this);
         make_fonts();
         create_controls();
         load();
@@ -242,9 +254,9 @@ void SettingsWindow::destroy_fonts() {
     }
 }
 
-HWND SettingsWindow::label(const wchar_t* text, HFONT font) {
+HWND SettingsWindow::label(HWND parent, const wchar_t* text, HFONT font) {
     HWND h = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX, 0,
-                             0, 10, 10, hwnd_, nullptr, nullptr, nullptr);
+                             0, 10, 10, parent, nullptr, nullptr, nullptr);
     SendMessageW(h, WM_SETFONT, (WPARAM)font, TRUE);
     return h;
 }
@@ -253,34 +265,34 @@ void SettingsWindow::create_controls() {
     for (int i = 0; i < CHECK_COUNT; ++i) {
         checks_[i] = CreateWindowExW(0, L"BUTTON", CHECKS[i].title,
                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0, 0, 10,
-                                     10, hwnd_, (HMENU)(INT_PTR)(IDC_CHECK + i), nullptr, nullptr);
+                                     10, body_, (HMENU)(INT_PTR)(IDC_CHECK + i), nullptr, nullptr);
         SendMessageW(checks_[i], WM_SETFONT, (WPARAM)font_, TRUE);
-        check_help_[i] = label(CHECKS[i].help, small_);
+        check_help_[i] = label(body_, CHECKS[i].help, small_);
     }
-    sensor_heading_ = label(L"Sensor", heading_);
-    reading_ = label(L"--", big_);
-    reading_caption_ = label(L"", small_);
-    sensor_state_ = label(L"", small_);
-    problem_ = label(L"", font_);
+    sensor_heading_ = label(body_, L"Sensor", heading_);
+    reading_ = label(hwnd_, L"--", big_);
+    reading_caption_ = label(hwnd_, L"", small_);
+    sensor_state_ = label(body_, L"", small_);
+    problem_ = label(body_, L"", font_);
     preview_ = CreateWindowExW(0, L"BUTTON", L"Preview the effect",
                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10,
-                               hwnd_, (HMENU)(INT_PTR)IDC_PREVIEW_BUTTON, nullptr, nullptr);
+                               body_, (HMENU)(INT_PTR)IDC_PREVIEW_BUTTON, nullptr, nullptr);
     SendMessageW(preview_, WM_SETFONT, (WPARAM)font_, TRUE);
-    for (int s = 0; s < 4; ++s) section_titles_[s] = label(SECTIONS[s].title, heading_);
-    section_intro_ = label(SECTIONS[0].intro, small_);
+    for (int s = 0; s < 4; ++s) section_titles_[s] = label(body_, SECTIONS[s].title, heading_);
+    section_intro_ = label(body_, SECTIONS[0].intro, small_);
     for (int i = 0; i < SLIDER_COUNT; ++i) {
-        slider_titles_[i] = label(SLIDERS[i].title, font_);
-        slider_values_[i] = label(L"", font_);
+        slider_titles_[i] = label(body_, SLIDERS[i].title, font_);
+        slider_values_[i] = label(body_, L"", font_);
         SetWindowLongW(slider_values_[i], GWL_STYLE,
                        GetWindowLongW(slider_values_[i], GWL_STYLE) | SS_RIGHT);
         sliders_[i] = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
                                       WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, 0,
-                                      0, 10, 10, hwnd_, (HMENU)(INT_PTR)(IDC_SLIDER + i), nullptr,
+                                      0, 10, 10, body_, (HMENU)(INT_PTR)(IDC_SLIDER + i), nullptr,
                                       nullptr);
         SendMessageW(sliders_[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, SLIDERS[i].steps));
         // The wheel scrolls the page, not whichever slider it is over.
         SetWindowSubclass(sliders_[i], slider_proc, 1, (DWORD_PTR)this);
-        slider_help_[i] = label(SLIDERS[i].help, small_);
+        slider_help_[i] = label(body_, SLIDERS[i].help, small_);
     }
     reset_ = CreateWindowExW(0, L"BUTTON", L"Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 10,
                              10, hwnd_, (HMENU)(INT_PTR)IDC_RESET, nullptr, nullptr);
@@ -305,75 +317,119 @@ static int text_height(HWND control, HFONT font, int width) {
 }
 
 void SettingsWindow::layout() {
-    if (!hwnd_) return;
+    if (!hwnd_ || !body_ || !reading_) return;  // not while being made
     RECT client;
     GetClientRect(hwnd_, &client);
     int margin = px(24), width = std::max((int)client.right - 2 * margin, px(200));
-    int y = margin - scroll_;
-    auto place = [&](HWND h, int height, int x = 0, int w = -1) {
-        SetWindowPos(h, nullptr, margin + x, y, w < 0 ? width - x : w, height,
-                     SWP_NOZORDER | SWP_NOACTIVATE);
-    };
-    auto text = [&](HWND h, HFONT f, int gap) {
-        int height = text_height(h, f, width);
-        place(h, height);
-        y += height + gap;
-    };
 
-    for (int i = 0; i < CHECK_COUNT; ++i) {
-        place(checks_[i], px(24));
-        y += px(24);
-        text(check_help_[i], small_, px(10));
-    }
-    y += px(10);
-    text(sensor_heading_, heading_, px(6));
-    text(reading_, big_, px(2));
-    text(reading_caption_, small_, px(4));
-    text(sensor_state_, small_, px(6));
-    if (IsWindowVisible(problem_)) text(problem_, font_, px(6));
-    place(preview_, px(30), 0, px(170));
-    y += px(30) + px(18);
+    // The reading, always at the top.
+    int y = px(14);
+    int height = text_height(reading_, big_, width);
+    SetWindowPos(reading_, nullptr, margin, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    y += height + px(2);
+    height = text_height(reading_caption_, small_, width);
+    SetWindowPos(reading_caption_, nullptr, margin, y, width, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    header_height_ = y + height + px(12);
 
-    int slider = 0;
-    for (int s = 0; s < 4; ++s) {
-        text(section_titles_[s], heading_, px(6));
-        if (s == 0) text(section_intro_, small_, px(10));
-        int end = s + 1 < 4 ? SECTIONS[s + 1].first_slider : SLIDER_COUNT;
-        for (; slider < end; ++slider) {
-            int row = px(22);
-            place(slider_titles_[slider], row, 0, width - px(90));
-            place(slider_values_[slider], row, width - px(90), px(90));
-            y += row;
-            place(sliders_[slider], px(30));
-            y += px(30);
-            text(slider_help_[slider], small_, px(14));
+    // The buttons, always at the bottom.
+    int button = px(30), pad = px(14);
+    footer_height_ = button + 2 * pad;
+    int top = std::max((int)client.bottom - footer_height_, header_height_);
+    SetWindowPos(reset_, nullptr, margin, top + pad, px(100), button,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(done_, nullptr, margin + width - px(100), top + pad, px(100), button,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+
+    // The rest scrolls between them.
+    SetWindowPos(body_, nullptr, 0, header_height_, client.right,
+                 std::max(top - header_height_, 0), SWP_NOZORDER | SWP_NOACTIVATE);
+    layout_body();
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void SettingsWindow::layout_body() {
+    if (!body_ || !checks_[0]) return;
+    RECT client;
+    GetClientRect(body_, &client);
+    int margin = px(24), width = std::max((int)client.right - 2 * margin, px(200));
+    // Twice at most: once more when the content got shorter than the scroll.
+    for (int pass = 0; pass < 2; ++pass) {
+        int y = px(8) - scroll_;
+        auto place = [&](HWND h, int height, int x = 0, int w = -1) {
+            SetWindowPos(h, nullptr, margin + x, y, w < 0 ? width - x : w, height,
+                         SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+        };
+        auto text = [&](HWND h, HFONT f, int gap) {
+            int height = text_height(h, f, width);
+            place(h, height);
+            y += height + gap;
+        };
+
+        for (int i = 0; i < CHECK_COUNT; ++i) {
+            place(checks_[i], px(24));
+            y += px(24);
+            text(check_help_[i], small_, px(10));
         }
-        y += px(8);
-    }
-    place(reset_, px(30), 0, px(100));
-    place(done_, px(30), width - px(100), px(100));
-    y += px(30) + margin;
+        y += px(10);
+        text(sensor_heading_, heading_, px(6));
+        text(sensor_state_, small_, px(6));
+        if (IsWindowVisible(problem_)) text(problem_, font_, px(6));
+        place(preview_, px(30), 0, px(170));
+        y += px(30) + px(18);
 
-    content_height_ = y + scroll_;
+        int slider = 0;
+        for (int s = 0; s < 4; ++s) {
+            text(section_titles_[s], heading_, px(6));
+            if (s == 0) text(section_intro_, small_, px(10));
+            int end = s + 1 < 4 ? SECTIONS[s + 1].first_slider : SLIDER_COUNT;
+            for (; slider < end; ++slider) {
+                int row = px(22);
+                place(slider_titles_[slider], row, 0, width - px(90));
+                place(slider_values_[slider], row, width - px(90), px(90));
+                y += row;
+                place(sliders_[slider], px(30));
+                y += px(30);
+                text(slider_help_[slider], small_, px(14));
+            }
+            y += px(8);
+        }
+        content_height_ = y + scroll_;
+        int most = std::max(0, content_height_ - (int)client.bottom);
+        if (scroll_ <= most) break;
+        scroll_ = most;
+    }
+
     SCROLLINFO si = {};
     si.cbSize = sizeof si;
     si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
     si.nMin = 0;
-    si.nMax = content_height_;
+    si.nMax = std::max(content_height_ - 1, 0);
     si.nPage = (UINT)client.bottom;
     si.nPos = scroll_;
-    SetScrollInfo(hwnd_, SB_VERT, &si, TRUE);
-    InvalidateRect(hwnd_, nullptr, TRUE);
+    SetScrollInfo(body_, SB_VERT, &si, TRUE);
+    RedrawWindow(body_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
+// Scrolling moves what is already drawn and paints only the strip that comes
+// into view, so nothing blanks out while the page moves.
 void SettingsWindow::scroll_to(int offset) {
+    if (!body_) return;
     RECT client;
-    GetClientRect(hwnd_, &client);
+    GetClientRect(body_, &client);
     int most = std::max(0, content_height_ - (int)client.bottom);
     offset = std::min(std::max(offset, 0), most);
     if (offset == scroll_) return;
+    int delta = scroll_ - offset;
     scroll_ = offset;
-    layout();
+    SCROLLINFO si = {};
+    si.cbSize = sizeof si;
+    si.fMask = SIF_POS;
+    si.nPos = scroll_;
+    SetScrollInfo(body_, SB_VERT, &si, TRUE);
+    ScrollWindowEx(body_, 0, delta, nullptr, nullptr, nullptr, nullptr,
+                   SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+    UpdateWindow(body_);
 }
 
 double SettingsWindow::slider_value(int i) const {
@@ -436,14 +492,14 @@ void SettingsWindow::refresh_status() {
                  sample.absolute_angle, sample.confidence * 100);
         SetWindowTextW(reading_caption_, text);
     }
-    if (had_problem != !problem.empty()) layout();
+    if (had_problem != !problem.empty()) layout_body();
 }
 
 LRESULT CALLBACK SettingsWindow::slider_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
                                             UINT_PTR, DWORD_PTR data) {
     if (msg == WM_MOUSEWHEEL) {
         auto* self = reinterpret_cast<SettingsWindow*>(data);
-        return SendMessageW(self->hwnd_, msg, wparam, lparam);
+        return SendMessageW(self->body_, msg, wparam, lparam);
     }
     return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
@@ -453,23 +509,45 @@ LRESULT CALLBACK SettingsWindow::proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM
     if (msg == WM_NCCREATE) {
         self = static_cast<SettingsWindow*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
-        self->hwnd_ = hwnd;
+        if (!self->hwnd_) self->hwnd_ = hwnd;  // the body comes second
     } else {
         self = reinterpret_cast<SettingsWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     }
-    if (self) return self->handle(msg, wparam, lparam);
+    if (self) return self->handle(hwnd, msg, wparam, lparam);
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
-LRESULT SettingsWindow::handle(UINT msg, WPARAM wparam, LPARAM lparam) {
+LRESULT SettingsWindow::handle(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    // The main window and its scrolling body share this; the messages from
+    // controls arrive at whichever of the two holds them.
+    bool is_main = hwnd == hwnd_;
     switch (msg) {
         case WM_CLOSE:
+            if (!is_main) break;
             ShowWindow(hwnd_, SW_HIDE);  // kept for next time, like the Qt window
             return 0;
         case WM_SIZE:
-            layout();
+            if (is_main) layout();  // the body is sized by layout() itself
             return 0;
+        case WM_PAINT: {
+            if (!is_main) break;
+            // Hairlines under the reading and above the buttons.
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(hwnd_, &ps);
+            RECT client;
+            GetClientRect(hwnd_, &client);
+            HBRUSH line = CreateSolidBrush(RGB(225, 225, 230));
+            RECT top = {0, header_height_ - 1, client.right, header_height_};
+            int bottom_y = std::max((int)client.bottom - footer_height_, header_height_);
+            RECT bottom = {0, bottom_y, client.right, bottom_y + 1};
+            FillRect(dc, &top, line);
+            FillRect(dc, &bottom, line);
+            DeleteObject(line);
+            EndPaint(hwnd_, &ps);
+            return 0;
+        }
         case WM_DPICHANGED: {
+            if (!is_main) break;
             dpi_ = HIWORD(wparam);
             RECT* suggested = reinterpret_cast<RECT*>(lparam);
             make_fonts();
@@ -500,6 +578,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wparam, LPARAM lparam) {
             return 0;
         }
         case WM_GETMINMAXINFO: {
+            if (!is_main) break;
             auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
             info->ptMinTrackSize.x = px(420);
             info->ptMinTrackSize.y = px(300);
@@ -512,7 +591,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wparam, LPARAM lparam) {
             SCROLLINFO si = {};
             si.cbSize = sizeof si;
             si.fMask = SIF_ALL;
-            GetScrollInfo(hwnd_, SB_VERT, &si);
+            GetScrollInfo(body_, SB_VERT, &si);
             int pos = si.nPos;
             switch (LOWORD(wparam)) {
                 case SB_LINEUP: pos -= px(30); break;
@@ -569,7 +648,7 @@ LRESULT SettingsWindow::handle(UINT msg, WPARAM wparam, LPARAM lparam) {
             return reinterpret_cast<LRESULT>(background_);
         }
     }
-    return DefWindowProcW(hwnd_, msg, wparam, lparam);
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
 // ---------------------------------------------------------------------------
