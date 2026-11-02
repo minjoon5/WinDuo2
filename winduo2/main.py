@@ -69,6 +69,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if options.sensors:
         return _print_sensor()
+    # The preview and the overlay check are one-off runs from a terminal and
+    # may sit alongside the running app; the app itself may not run twice.
+    if not (options.preview or options.overlay_check):
+        instance = _claim_single_instance()
+        if instance is None:
+            log.info("WinDuo2 is already running; this copy is leaving it be")
+            _stop_watching(hang_report)
+            return 0
     if sys.platform.startswith("linux"):
         # The overlay has to be a native Wayland window for Hyprland to float
         # and pin it; under XWayland it would be an X11 window it cannot place.
@@ -203,6 +211,53 @@ def _print_sensor(seconds: float = 20.0) -> int:
     finally:
         source.stop()
     return 0
+
+
+#: Named per sign-in session, so two users signed in at once each get one.
+INSTANCE_MUTEX = "Local\\WinDuo2.running"
+_ERROR_ACCESS_DENIED = 5
+_ERROR_ALREADY_EXISTS = 183
+
+
+def _claim_single_instance():
+    """Hold a named mutex for the life of the process, or None if one is held.
+
+    Two copies running at once each read the lid and each draw a full-screen
+    overlay, so the screen alternated between two pictures a few milliseconds
+    apart and the effect juddered back and forth. Copies came from several
+    places: the sign-in task, the installer's last page, a double-click, a
+    task run by hand. The first one wins and later ones quit quietly.
+
+    A copy installed with uiAccess runs at a higher integrity level, and an
+    ordinary copy is refused the handle to its mutex; that refusal also means
+    one is running. Returns the handle, which must stay referenced, or a
+    placeholder where there is no such mutex (off Windows, or if the call
+    itself fails, when running twice is better than not running at all).
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX)
+        error = ctypes.get_last_error()
+    except Exception:
+        log.debug("could not check for another copy", exc_info=True)
+        return True
+    if not handle:
+        if error == _ERROR_ACCESS_DENIED:
+            return None
+        log.debug("CreateMutexW failed (%d); not checking for another copy", error)
+        return True
+    if error == _ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return None
+    return handle
 
 
 def _since_boot() -> str:
