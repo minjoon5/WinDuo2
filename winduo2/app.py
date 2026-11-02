@@ -17,16 +17,20 @@ from winduo2.angle.estimator import AngleSample
 from winduo2.angle.lidswitch import LidSwitch
 from winduo2.angle.sensor import SensorAngleSource
 from winduo2.config import Store
-from winduo2.effect.controller import EffectController
+from winduo2.effect.controller import IDLE_INTERVAL, EffectController
 from winduo2.log import get_logger
 from winduo2.render import win32
 from winduo2.render.capture import CaptureError, ScreenCapture
 from winduo2.render.overlay import DepthOverlay, FrameParams
+from winduo2.render.pacer import FramePacer
 from winduo2.render.pointer import PointerHider
 
 log = get_logger("app")
 
 __all__ = ["Engine", "PreviewSweep"]
+
+#: Anything polling faster than idle means the lid is moving or the effect is on.
+IDLE_POLL = IDLE_INTERVAL * 0.5
 
 
 class PreviewSweep:
@@ -111,6 +115,10 @@ class Engine(QObject):
     #: session open all day.
     PREWARM_LINGER = 2.0
 
+    #: While the pacer drives frames, the timer only fires if it falls silent
+    #: this long, as it does when the panel turns off with the lid shut.
+    BACKSTOP_MS = 50
+
     def __init__(self, store: Store) -> None:
         super().__init__()
         self.store = store
@@ -121,11 +129,12 @@ class Engine(QObject):
         self.capture: ScreenCapture | None = None
         self.lid = LidSwitch(self._on_lid_change)
 
+        # Polls the lid while nothing is happening, and stands by as a backstop
+        # while the pacer draws the effect in step with the display.
         self._timer = QTimer(self)
-        # The default coarse timer quantises to 5 ms or worse, which is visible
-        # as judder in a 60 Hz effect.
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._timer.timeout.connect(self._tick)
+        self._pacer = FramePacer(self._tick)
         self._preview: PreviewSweep | None = None
         self._problem = ""
         self._screen_size = (0.0, 0.0)
@@ -143,7 +152,7 @@ class Engine(QObject):
         self._warm_overlay()
         self.sensor.start()
         self.lid.start()
-        self._timer.start(int(self.controller.poll_interval * 1000))
+        self._schedule()
         screen = QGuiApplication.primaryScreen()
         if screen is not None:
             screen.geometryChanged.connect(lambda _: self._screen_changed())
@@ -154,6 +163,7 @@ class Engine(QObject):
     def stop(self) -> None:
         self._running = False
         self._timer.stop()
+        self._pacer.shutdown()
         self._teardown_effect()
         self.overlay.destroy()
         self.sensor.stop()
@@ -204,13 +214,30 @@ class Engine(QObject):
             settings.trigger_travel, settings.full_effect_travel
         )
         self._prewarm_until = self._preview.started_at + self._preview.duration + 2.0
-        self._timer.setInterval(int(1000 / 60))
+        self._schedule()
 
     # --- The loop --------------------------------------------------------
 
     def _tick(self) -> None:
-        now = time.monotonic()
+        if not self._running:
+            return
+        try:
+            self._step(time.monotonic())
+        finally:
+            if self._running:
+                self._schedule()
 
+    def _schedule(self) -> None:
+        """Pick who calls the next tick: the display while anything moves, else the timer."""
+        moving = self._preview is not None or self.controller.poll_interval < IDLE_POLL
+        if moving:
+            self._pacer.start()
+            self._timer.start(self.BACKSTOP_MS)
+        else:
+            self._pacer.stop()
+            self._timer.start(round(self.controller.poll_interval * 1000))
+
+    def _step(self, now: float) -> None:
         if self._preview is not None:
             self._drive_preview(now)
         else:
@@ -222,7 +249,6 @@ class Engine(QObject):
             if self.overlay.is_visible:
                 self._dismiss()
             self._update_prewarm(now)
-            self._timer.setInterval(int(self.controller.poll_interval * 1000))
             return
 
         if not self.overlay.is_visible and not self._present():
@@ -235,8 +261,6 @@ class Engine(QObject):
             self._dismiss()
             self._prewarm_until = now + self.PREWARM_LINGER
             self.changed.emit()
-
-        self._timer.setInterval(int(self.controller.poll_interval * 1000))
 
     def _drive_preview(self, now: float) -> None:
         assert self._preview is not None
@@ -449,6 +473,8 @@ class Engine(QObject):
 
     def _note_screen(self) -> None:
         self._screen_size = _native_size()
+        screen = QGuiApplication.primaryScreen()
+        self._pacer.set_refresh_rate(screen.refreshRate() if screen is not None else None)
 
 
 def _native_size() -> tuple[float, float]:
