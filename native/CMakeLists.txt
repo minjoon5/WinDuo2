@@ -19,3 +19,11 @@ if(MSVC)
   target_compile_options(winduo2_native PRIVATE /W4 /WX /permissive- /utf-8)
   target_compile_definitions(winduo2_native PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
+
+# The effect core's C test API, for tests/test_core_parity.py, which checks
+# the C++ core against the Python implementation it was ported from.
+add_library(winduo2_core_capi SHARED core/core.cpp core/core_capi.cpp)
+if(MSVC)
+  target_compile_options(winduo2_core_capi PRIVATE /W4 /WX /permissive- /utf-8)
+  target_compile_definitions(winduo2_core_capi PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
