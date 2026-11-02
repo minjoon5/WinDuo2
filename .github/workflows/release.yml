@@ -22,9 +22,10 @@ jobs:
     #   from packaging/windows/make-signing-cert.ps1; a PC that trusts that
     #   certificate once runs every later release. Without them it is left
     #   for packaging/windows/trust-self-signed.ps1 to sign on the user's own
-    #   machine after each install. It is a folder, not --onefile, because a one-file
-    #   build unpacks its code into %TEMP%, which defeats the point of
-    #   requiring a location only administrators can write to.
+    #   machine, which the installer does by default. It is a folder, not
+    #   --onefile, because a one-file build unpacks its code into %TEMP%,
+    #   which defeats the point of requiring a location only administrators
+    #   can write to.
     strategy:
       matrix:
         include:
@@ -250,8 +251,9 @@ jobs:
             - **`WinDuo2-Setup.exe`**: installs under Program Files with
               uiAccess, so Start, search and quick settings stay open and are
               blurred too. Windows only allows that for an exe signed by a
-              certificate the PC trusts; see the README for trusting the
-              signing certificate once, or for signing an unsigned build.
+              certificate the PC trusts, so leave *Sign WinDuo2 with a
+              certificate made on this PC* ticked while installing; see
+              docs/uiaccess.md.
 
             Windows SmartScreen may warn about an unrecognised app. Choose
             **More info**, then **Run anyway**.

@@ -3,8 +3,9 @@
 ; Windows only grants uiAccess to an executable that asks for it in its
 ; manifest, is signed by a certificate the machine trusts, and sits in a secure
 ; location such as Program Files. PyInstaller writes the manifest
-; (--uac-uiaccess) and CI signs the exe when a certificate is configured; this
-; installer supplies the third condition. uiAccess is what lets the overlay sit
+; (--uac-uiaccess); the "selfsign" task below signs it on the PC with a
+; certificate made there, unless CI already signed it with one the PC trusts;
+; and this installer puts it in Program Files. uiAccess is what lets the overlay sit
 ; above Start, search and quick settings, so they are blurred instead of closed.
 ;
 ; Built by .github/workflows/release.yml from the --onedir output in
@@ -46,6 +47,10 @@ Source: "..\..\dist\WinDuo2\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 Source: "trust-self-signed.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "make-signing-cert.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
+[Tasks]
+; Remembered across updates (UsePreviousTasks), so each update is signed too.
+Name: "selfsign"; Description: "Sign WinDuo2 with a certificate made on this PC, so it can blur Start and quick settings (uiAccess). Skipped when this build is already signed for this PC."
+
 [Icons]
 Name: "{autoprograms}\WinDuo2"; Filename: "{app}\WinDuo2.exe"
 
@@ -58,3 +63,32 @@ Filename: "{app}\WinDuo2.exe"; Description: "Start WinDuo2"; Flags: nowait posti
 ; The app registers its own sign-in start; leave nothing pointing at a removed exe.
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN WinDuo2 /F"; Flags: runhidden; RunOnceId: "DeleteTask"
 Filename: "{sys}\reg.exe"; Parameters: "delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v WinDuo2 /f"; Flags: runhidden; RunOnceId: "DeleteRunValue"
+; This PC's signing certificate, its key and its trust go with the app.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\trust-self-signed.ps1"" -Remove"; Flags: runhidden; RunOnceId: "RemoveSigningCert"
+
+[UninstallDelete]
+Type: files; Name: "{app}\signing.log"
+
+[Code]
+// Signs the exe after the files are in place and before the finished page
+// offers to start it, and says so when that fails rather than leaving an app
+// that will not start without explanation.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  Params: String;
+  LogPath: String;
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('selfsign') then
+  begin
+    LogPath := ExpandConstant('{app}\signing.log');
+    Params := '-NoProfile -ExecutionPolicy Bypass -File "' +
+      ExpandConstant('{app}\trust-self-signed.ps1') + '" -Exe "' +
+      ExpandConstant('{app}\WinDuo2.exe') + '" -Log "' + LogPath + '"';
+    WizardForm.StatusLabel.Caption := 'Signing WinDuo2 for this PC...';
+    if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+      SuppressibleMsgBox('WinDuo2 could not be signed for this PC, so Windows will not ' +
+        'start it. Details are in ' + LogPath + '.', mbError, MB_OK, IDOK);
+  end;
+end;
