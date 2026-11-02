@@ -14,25 +14,7 @@ Windows 10 (2004+) and 11, Linux on Hyprland · Free for noncommercial use, [Pol
 
 **Just want to use it:** download `WinDuo2.exe` from the [latest release](https://github.com/minjoon5/WinDuo2/releases/latest). One file, nothing else to install, no Python. Windows will warn about an unrecognised app because the build is unsigned — choose *More info*, then *Run anyway*.
 
-**To blur Start and quick settings too:** install with `WinDuo2-Setup.exe` from the same release instead. It installs under Program Files with *uiAccess*, which puts the effect above Start, search, the notification centre and quick settings, so they stay open and blur with everything else instead of closing. Windows only grants uiAccess to an exe that is signed by a certificate the PC trusts and installed under Program Files, and refuses to start it otherwise. Two ways to get there, both from an administrator PowerShell:
-
-- **Once, for every update after it** (for a fork you build yourself): make a signing certificate, trust it on this PC, and give it to CI, which then signs every `WinDuo2-Setup.exe` it builds.
-
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File "C:\Program Files\WinDuo2\make-signing-cert.ps1"
-  ```
-
-  It writes two files to a *WinDuo2-signing* folder on the desktop. Save their contents as the `WINDOWS_CERT_PFX` and `WINDOWS_CERT_PASSWORD` secrets under the repository's *Settings › Secrets and variables › Actions*, delete the two files, and build a new release. Keep `WinDuo2-signing.cer` from the same folder: `make-signing-cert.ps1 -Trust WinDuo2-signing.cer` trusts the same certificate on another PC. The private key is deleted from the PC, so only the GitHub secret can sign with it.
-
-- **After every install or update:** sign the installed copy with a certificate made on the spot.
-
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File "C:\Program Files\WinDuo2\trust-self-signed.ps1"
-  ```
-
-  It signs `WinDuo2.exe`, trusts only that certificate's public half, and deletes its private key. An update replaces the exe, so it has to be run again each time; it does nothing when the exe is already signed by a trusted certificate.
-
-Either script takes `-Remove` to take its certificate back out. Run it before uninstalling, since uninstalling removes the scripts too.
+**To blur Start and quick settings too:** install with `WinDuo2-Setup.exe` from the same release instead. It installs under Program Files with *uiAccess*, which puts the effect above Start, search, the notification centre and quick settings, so they stay open and blur with everything else instead of closing. Windows only grants uiAccess to an exe signed by a certificate the PC trusts and installed under Program Files, and refuses to start it otherwise. **[docs/uiaccess.md](docs/uiaccess.md)** covers signing it (once for every update, through CI, or by hand after each install), starting it at sign-in, switching from the portable exe, checking it works, and uninstalling.
 
 **From source:**
 
@@ -64,7 +46,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 - **It needs a hinge angle sensor.** Laptops without one, which includes most ordinary clamshells, are not supported, and WinDuo2 says so in the tray. The lid accelerometer alone is no longer used on Windows.
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
-- **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see Install). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
+- **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see [docs/uiaccess.md](docs/uiaccess.md)). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
 - Primary display only.
 
