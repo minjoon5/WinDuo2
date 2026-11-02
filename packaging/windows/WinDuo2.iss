@@ -10,16 +10,16 @@
 ;
 ; Built by .github/workflows/release.yml from the --onedir output in
 ; dist\WinDuo2. By hand, from the repository root:
-;   iscc /DAppVersion=1.0.0 packaging\windows\WinDuo2.iss
-
-#ifndef AppVersion
-  #define AppVersion "0.0.0"
-#endif
+;   iscc packaging\windows\WinDuo2.iss
+;
+; There is no version number. AppVerName stands in for the AppVersion Inno
+; Setup would otherwise require, and installing over an earlier install
+; replaces it whatever was there before.
 
 [Setup]
 AppId={{6F0B7C1E-3D52-4B7A-9E0B-2C1D8A5F4E21}
 AppName=WinDuo2
-AppVersion={#AppVersion}
+AppVerName=WinDuo2
 AppPublisher=WinDuo2
 AppPublisherURL=https://github.com/minjoon5/WinDuo2
 DefaultDirName={autopf}\WinDuo2

@@ -149,9 +149,9 @@ jobs:
 
       - name: Check it starts
         if: matrix.variant == 'portable'
-        # --version exits before any window, sensor, or GPU work, so it is a real
-        # check that the bundle imports cleanly on a machine with no dev setup.
-        run: ./dist/WinDuo2.exe --version
+        # --help exits before any window, sensor, or GPU work, so it checks that
+        # the bundle and its bootloader start on a machine with no dev setup.
+        run: ./dist/WinDuo2.exe --help
 
       - name: Check the manifest asks for uiAccess
         if: matrix.variant == 'installer'
@@ -204,8 +204,7 @@ jobs:
         if: matrix.variant == 'installer'
         run: |
           choco install innosetup -y --no-progress
-          $version = python -c "import winduo2; print(winduo2.__version__)"
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging/windows/WinDuo2.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/windows/WinDuo2.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
         shell: pwsh
 

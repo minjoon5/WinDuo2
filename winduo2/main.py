@@ -13,7 +13,6 @@ import os
 import signal
 import sys
 
-from winduo2 import __version__
 from winduo2.log import get_logger, setup_logging
 
 log = get_logger("main")
@@ -26,7 +25,6 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         prog="winduo2",
         description="Lean the screen away as the laptop lid closes.",
     )
-    parser.add_argument("--version", action="version", version=f"WinDuo2 {__version__}")
     parser.add_argument(
         "--preview",
         action="store_true",
@@ -57,8 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     options = _parse(argv)
     setup_logging(options.verbose)
     log.info(
-        "WinDuo2 %s starting, pid %d%s",
-        __version__,
+        "WinDuo2 starting, pid %d%s",
         os.getpid(),
         " (started at sign-in)" if options.autostart else "",
     )
@@ -77,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         # and pin it; under XWayland it would be an X11 window it cannot place.
         os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
-    # Imported here so --version and the platform check cost nothing.
+    # Imported here so --help and the platform check cost nothing.
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
@@ -96,7 +93,6 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("WinDuo2")
     app.setApplicationDisplayName("WinDuo2")
-    app.setApplicationVersion(__version__)
     app.setOrganizationName("WinDuo2")
     app.setWindowIcon(app_icon())
     app.setStyleSheet(STYLESHEET)
@@ -143,8 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     from winduo2.render import win32
 
     log.info(
-        "WinDuo2 %s ready%s%s%s",
-        __version__,
+        "WinDuo2 ready%s%s%s",
         _since_process_start(),
         _since_boot(),
         ", with uiAccess" if win32.has_ui_access() else "",

@@ -34,7 +34,7 @@ PyInstaller writes it with `--uac-uiaccess`. The `installer` variant in `.github
 
 It is a folder build, not `--onefile`. A one-file build unpacks its code into `%TEMP%`, which any program running as the user can write to. That would defeat the point of requiring a location only administrators can change.
 
-The exe cannot be started on the CI runner, because it is not under Program Files there. The portable variant's `--version` check covers the same bundle importing cleanly.
+The exe cannot be started on the CI runner, because it is not under Program Files there. The portable variant's `--help` check covers the same bundle starting cleanly.
 
 ### 2. The signature
 
@@ -118,7 +118,7 @@ Do not move the folder or loosen its permissions. Anywhere else, Windows refuses
 To build the installer by hand, from the repository root, after the `--onedir` PyInstaller build:
 
 ```bat
-iscc /DAppVersion=1.0.0 packaging\windows\WinDuo2.iss
+iscc packaging\windows\WinDuo2.iss
 ```
 
 ## Starting at sign-in
