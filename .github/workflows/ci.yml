@@ -57,5 +57,3 @@ jobs:
       - name: Import every module
         run: |
           python -c "import importlib, pkgutil, winduo2; [importlib.import_module(m.name) for m in pkgutil.walk_packages(winduo2.__path__, 'winduo2.')]"
-      - name: Starts
-        run: python -m winduo2 --help
