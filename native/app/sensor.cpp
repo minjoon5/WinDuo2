@@ -1,4 +1,5 @@
-// The hinge sensors, through C++/WinRT. Ported from winduo2/angle/sensor.py.
+// The hinge sensors, through C++/WinRT. Ported from the Python app's
+// winduo2/angle/sensor.py (in the git history).
 //
 // Two are tried, in this order:
 // - Windows' own HingeAngleSensor, on machines whose firmware publishes one.

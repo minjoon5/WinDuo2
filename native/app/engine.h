@@ -1,5 +1,5 @@
 // The engine: sensor, controller, lid switch and renderer, driven from the UI
-// thread's message loop. Ported from winduo2/app.py.
+// thread's message loop. Ported from the Python app's winduo2/app.py (in the git history).
 
 #pragma once
 
@@ -13,7 +13,7 @@
 
 namespace wd {
 
-// How each run of the effect performed; winduo2/render/framestats.py.
+// How each run of the effect performed; was winduo2/render/framestats.py.
 class FrameStats {
 public:
     void begin(double period);

@@ -1,5 +1,5 @@
 // See platform.h. The reasons behind each choice are in the Python modules
-// these were ported from; only the rules are repeated here.
+// these were ported from, in the git history; only the rules are repeated here.
 
 #include "platform.h"
 

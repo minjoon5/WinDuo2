@@ -1,5 +1,6 @@
-// See engine.h. Ported from winduo2/app.py, winduo2/render/framestats.py and
-// winduo2/render/native.py; the reasons for each rule are in those files.
+// See engine.h. Ported from the Python app's winduo2/app.py,
+// winduo2/render/framestats.py and winduo2/render/native.py; the reasons for
+// each rule are in those files, in the git history.
 
 #include "engine.h"
 

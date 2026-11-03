@@ -3,7 +3,7 @@
 #include <windows.h>
 #include "resource.h"
 
-IDI_APP ICON "../../winduo2/ui/icon.ico"
+IDI_APP ICON "icon.ico"
 
 #ifdef WD_UIACCESS
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "winduo2_uiaccess.manifest"

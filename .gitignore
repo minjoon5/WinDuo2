@@ -4,8 +4,6 @@ __pycache__/
 .eggs/
 dist/
 build/
-# Built by native/build.ps1.
-winduo2/render/winduo2_native.dll
 .venv/
 venv/
 

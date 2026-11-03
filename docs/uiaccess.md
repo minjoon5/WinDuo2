@@ -123,7 +123,7 @@ iscc packaging\windows\WinDuo2.iss
 
 ## Starting at sign-in
 
-*Start with Windows* is on by default. When it is on, WinDuo2 registers a Task Scheduler task named **WinDuo2** that runs at the user's sign-in, without elevation (`winduo2/autostart.py`). If Windows refuses to register the task, it writes a `WinDuo2` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` instead. Turning the setting off removes both.
+*Start with Windows* is on by default. When it is on, WinDuo2 registers a Task Scheduler task named **WinDuo2** that runs at the user's sign-in, without elevation (`native/app/platform.cpp`). If Windows refuses to register the task, it writes a `WinDuo2` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` instead. Turning the setting off removes both.
 
 A uiAccess exe needs one change here. Task Scheduler starts programs with a plain `CreateProcess`. For an exe whose manifest asks for uiAccess, that call fails with `ERROR_ELEVATION_REQUIRED` (Task Scheduler shows `0x800702E4`, *"The requested operation requires elevation"*). Starting it through the shell lets Windows grant uiAccess the same way it does for a double-click. So when WinDuo2 is running with uiAccess, it registers the task as:
 
@@ -208,9 +208,8 @@ If anything is left over, open `certlm.msc` and delete *WinDuo2 local uiAccess s
 
 | File | Purpose |
 |---|---|
-| `winduo2/render/win32.py` | `has_ui_access()` reads `TokenUIAccess` from the process token. `close_shell_flyouts()` is the fallback for builds without it. |
-| `winduo2/app.py` | Skips closing the flyouts when the process has uiAccess. |
-| `winduo2/autostart.py` | Registers the sign-in task, through `ShellExec_RunDLL` for the uiAccess build. |
+| `native/app/platform.cpp` | `has_ui_access()` reads `TokenUIAccess` from the process token. `close_shell_flyouts()` is the fallback for builds without it. `autostart_sync()` registers the sign-in task, through `ShellExec_RunDLL` for the uiAccess build. |
+| `native/app/engine.cpp` | Skips closing the flyouts when the process has uiAccess. |
 | `.github/workflows/release.yml` | Builds the portable and installer variants and signs the installer variant when the secrets are set. |
 | `packaging/windows/WinDuo2.iss` | The Inno Setup script for `WinDuo2-Setup.exe`, including the *Sign WinDuo2* task. |
 | `packaging/windows/trust-self-signed.ps1` | Method A, run by the installer. |

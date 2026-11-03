@@ -1,5 +1,5 @@
-// The tray icon and the settings window. Ported from winduo2/ui/tray.py and
-// winduo2/ui/settings.py.
+// The tray icon and the settings window. Ported from the Python app's
+// winduo2/ui/tray.py and winduo2/ui/settings.py (in the git history).
 
 #pragma once
 

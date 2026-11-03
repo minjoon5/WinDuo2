@@ -1,5 +1,5 @@
 // The renderer's C API, from native/winduo2_native.cpp, which the app links
-// in directly. The same functions the Python app reached through ctypes.
+// in directly. The same functions the Python app once reached through ctypes.
 #pragma once
 
 #include "../core/core.h"

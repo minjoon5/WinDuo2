@@ -2,7 +2,8 @@
 // sensors and switch, starting at sign-in, the pointer, the shell flyouts,
 // and the single-instance guard. Ported from the Python package's
 // winduo2/log.py, config.py, angle/sensor.py, angle/lidswitch.py,
-// autostart.py, render/win32.py, render/pointer.py and main.py.
+// autostart.py, render/win32.py, render/pointer.py and main.py (the ones
+// other than log.py and config.py are in the git history).
 
 #pragma once
 

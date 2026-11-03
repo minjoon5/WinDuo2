@@ -1,8 +1,6 @@
-"""Recovering lid travel from the laptop's own sensors.
+"""Recovering lid travel from the lid angle.
 
-``sensor``      the hinge angle sensor, on its own thread.
 ``estimator``   lid angle to degrees of travel from neutral.
-``lidswitch``   the operating system's own open/shut signal.
 """
 
 from winduo2.angle.estimator import AngleSample, TravelEstimator

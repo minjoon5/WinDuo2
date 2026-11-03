@@ -1,4 +1,4 @@
-"""Makes ``helpers`` importable from the test files and keeps Qt out of CI."""
+"""Makes ``helpers`` importable from the test files."""
 
 from __future__ import annotations
 

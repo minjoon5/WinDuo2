@@ -13,9 +13,9 @@
 // - Fades are DirectComposition opacity animations, so DWM runs them and the
 //   app does not have to keep drawing to fade.
 //
-// The shaders are ports of winduo2/render/shaders.py and must stay in step
-// with them. Python drives everything through the plain C API at the bottom,
-// with ctypes; see winduo2/render/native.py.
+// The shaders began as ports of the Python app's winduo2/render/shaders.py.
+// The app drives everything through the plain C API at the bottom
+// (app/renderer.h).
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -51,7 +51,7 @@ using Microsoft::WRL::ComPtr;
 static const int WD_VERSION = 2;
 
 // ---------------------------------------------------------------------------
-// The C API's types. Mirrored by ctypes structures in winduo2/render/native.py.
+// The C API's types, as app/renderer.h declares them.
 
 #define WD_PROFILE_SAMPLES 128
 
@@ -91,7 +91,7 @@ struct WdTimings {
     float present_ms;  // handing the frame to DWM
 };
 
-// The layouts ctypes mirrors; tests/test_native.py checks the same sizes.
+// The layouts app/renderer.h declares.
 static_assert(sizeof(WdParams) == 1076, "WdParams layout changed: bump WD_VERSION");
 static_assert(sizeof(WdInfo) == 40, "WdInfo layout changed: bump WD_VERSION");
 static_assert(sizeof(WdTimings) == 12, "WdTimings layout changed: bump WD_VERSION");
@@ -140,7 +140,7 @@ static double now_ms() {
 }
 
 // ---------------------------------------------------------------------------
-// Shaders. Ports of winduo2/render/shaders.py; keep the two in step.
+// Shaders.
 
 static const char* SHADER_SOURCE = R"HLSL(
 // A single oversized triangle covering the viewport, needing no vertex buffer.

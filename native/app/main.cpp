@@ -1,4 +1,4 @@
-// WinDuo2's entry point. Ported from winduo2/main.py.
+// WinDuo2's entry point. Ported from the Python app's winduo2/main.py (in the git history).
 //
 //   WinDuo2.exe              run in the notification area
 //   WinDuo2.exe --preview    play the effect once and exit

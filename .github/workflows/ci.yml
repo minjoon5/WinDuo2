@@ -21,9 +21,8 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
 
-      - name: Build the native app, renderer and core
-        # The tests load the renderer and run its self-test on WARP, and check
-        # the C++ core against the Python step by step.
+      - name: Build the native app and core
+        # The tests check the C++ core against the Python step by step.
         run: ./native/build.ps1
         shell: pwsh
 
@@ -45,8 +44,8 @@ jobs:
         run: pytest
 
   imports:
-    # Catches the mistakes a headless test run cannot: a Qt or OpenGL module
-    # that fails to import at all.
+    # Catches a module that fails to import at all, with only the declared
+    # dependencies installed.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
