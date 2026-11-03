@@ -142,19 +142,20 @@ enum {
 
 // --- The glass -------------------------------------------------------------
 //
-// The settings window is see-through acrylic, Windows' own blur, over the
-// title bar and the whole client area alike. DWM shows the backdrop wherever
+// The settings window carries Mica, the backdrop Windows' own Settings app
+// uses: the desktop wallpaper, blurred and tinted, whatever windows lie in
+// between. It covers the title bar and the whole client area alike. DWM shows the backdrop wherever
 // the window's pixels are transparent, but GDI and the common controls draw
 // opaque pixels with no alpha. So everything is drawn on white into a buffer
 // first, and the white is then taken out: each pixel becomes the colour that,
 // laid over white, gives what was drawn. White turns fully transparent, text
-// and the controls keep their look, and the light acrylic shows behind them.
+// and the controls keep their look, and the light Mica shows behind them.
 
 // Raw values, so an older SDK still builds; the calls fail harmlessly on an
 // older Windows, which then keeps the plain white window.
 const DWORD WD_DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 const DWORD WD_DWMWA_SYSTEMBACKDROP_TYPE = 38;
-const int WD_DWMSBT_TRANSIENTWINDOW = 3;  // acrylic
+const int WD_DWMSBT_MAINWINDOW = 2;  // Mica
 const int BUILD_FOR_BACKDROP = 22621;     // Windows 11 22H2
 const DWORD ZBID_DESKTOP = 1;
 
@@ -202,6 +203,25 @@ LRESULT CALLBACK glass_control_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
             }
             EndPaint(hwnd, &ps);
             return 0;
+        }
+        case WM_SETTEXT: {
+            // The live reading and the sensor line are set several times a
+            // second. A static control paints new text straight to the screen,
+            // opaque white behind it, which flashed before the repaint here
+            // made it see-through again. Unchanged text is left alone, and
+            // changed text goes in with drawing off, to be painted only here.
+            const wchar_t* text = reinterpret_cast<const wchar_t*>(lparam);
+            int length = GetWindowTextLengthW(hwnd);
+            std::wstring now((size_t)length + 1, L'\0');
+            GetWindowTextW(hwnd, &now[0], length + 1);
+            now.resize((size_t)length);
+            if (now == (text ? text : L"")) return TRUE;
+            if (!IsWindowVisible(hwnd)) break;  // drawing back on would show it
+            DefSubclassProc(hwnd, WM_SETREDRAW, FALSE, 0);
+            LRESULT set = DefSubclassProc(hwnd, msg, wparam, lparam);
+            DefSubclassProc(hwnd, WM_SETREDRAW, TRUE, 0);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return set;
         }
         case WM_NCDESTROY:
             RemoveWindowSubclass(hwnd, glass_control_proc, id);
@@ -363,7 +383,7 @@ HWND SettingsWindow::create_frame(HINSTANCE instance) {
                            CW_USEDEFAULT, px(560), px(760), nullptr, nullptr, instance, this);
 }
 
-// Windows' own animations on, and the acrylic backdrop behind everything.
+// Windows' own animations on, and the Mica backdrop behind everything.
 void SettingsWindow::make_glass() {
     BOOL off = FALSE;
     DwmSetWindowAttribute(hwnd_, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
@@ -372,7 +392,7 @@ void SettingsWindow::make_glass() {
     if (!painting_) return;
     // A light backdrop: the window's colours are drawn for one.
     DwmSetWindowAttribute(hwnd_, WD_DWMWA_USE_IMMERSIVE_DARK_MODE, &off, sizeof off);
-    int backdrop = WD_DWMSBT_TRANSIENTWINDOW;
+    int backdrop = WD_DWMSBT_MAINWINDOW;
     if (FAILED(DwmSetWindowAttribute(hwnd_, WD_DWMWA_SYSTEMBACKDROP_TYPE, &backdrop,
                                      sizeof backdrop)))
         return;
