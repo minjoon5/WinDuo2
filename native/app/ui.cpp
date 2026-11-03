@@ -3,7 +3,9 @@
 #include "ui.h"
 
 #include <commctrl.h>
+#include <dwmapi.h>
 #include <shellapi.h>
+#include <uxtheme.h>
 
 #include <cmath>
 #include <cstdio>
@@ -138,6 +140,110 @@ enum {
     IDC_DONE,
 };
 
+// --- The glass -------------------------------------------------------------
+//
+// The settings window is see-through acrylic, Windows' own blur, over the
+// title bar and the whole client area alike. DWM shows the backdrop wherever
+// the window's pixels are transparent, but GDI and the common controls draw
+// opaque pixels with no alpha. So everything is drawn on white into a buffer
+// first, and the white is then taken out: each pixel becomes the colour that,
+// laid over white, gives what was drawn. White turns fully transparent, text
+// and the controls keep their look, and the light acrylic shows behind them.
+
+// Raw values, so an older SDK still builds; the calls fail harmlessly on an
+// older Windows, which then keeps the plain white window.
+const DWORD WD_DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+const DWORD WD_DWMWA_SYSTEMBACKDROP_TYPE = 38;
+const int WD_DWMSBT_TRANSIENTWINDOW = 3;  // acrylic
+const int BUILD_FOR_BACKDROP = 22621;     // Windows 11 22H2
+const DWORD ZBID_DESKTOP = 1;
+
+void white_to_alpha(HPAINTBUFFER buffer) {
+    RGBQUAD* bits = nullptr;
+    int row = 0;
+    RECT target;
+    if (FAILED(GetBufferedPaintBits(buffer, &bits, &row)) ||
+        FAILED(GetBufferedPaintTargetRect(buffer, &target)))
+        return;
+    int width = target.right - target.left, height = target.bottom - target.top;
+    for (int y = 0; y < height; ++y) {
+        RGBQUAD* p = bits + (size_t)y * row;
+        for (int x = 0; x < width; ++x, ++p) {
+            int darkest = std::min(std::min((int)p->rgbRed, (int)p->rgbGreen), (int)p->rgbBlue);
+            int lift = darkest;  // how much of the white shows through: 255 - alpha
+            p->rgbRed = (BYTE)(p->rgbRed - lift);
+            p->rgbGreen = (BYTE)(p->rgbGreen - lift);
+            p->rgbBlue = (BYTE)(p->rgbBlue - lift);
+            p->rgbReserved = (BYTE)(255 - lift);
+        }
+    }
+}
+
+// Every control in the window paints through here once the glass is on.
+LRESULT CALLBACK glass_control_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+                                    UINT_PTR id, DWORD_PTR) {
+    switch (msg) {
+        case WM_ERASEBKGND:
+            return 1;  // painted on white with the rest, in WM_PAINT
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(hwnd, &ps);
+            RECT client;
+            GetClientRect(hwnd, &client);
+            HDC buffered = nullptr;
+            HPAINTBUFFER buffer =
+                BeginBufferedPaint(dc, &client, BPBF_TOPDOWNDIB, nullptr, &buffered);
+            if (buffer) {
+                FillRect(buffered, &client, (HBRUSH)GetStockObject(WHITE_BRUSH));
+                DefSubclassProc(hwnd, WM_PRINTCLIENT, (WPARAM)buffered,
+                                PRF_CLIENT | PRF_ERASEBKGND);
+                white_to_alpha(buffer);
+                EndBufferedPaint(buffer, TRUE);
+            }
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_NCDESTROY:
+            RemoveWindowSubclass(hwnd, glass_control_proc, id);
+            break;
+    }
+    LRESULT result = DefSubclassProc(hwnd, msg, wparam, lparam);
+    // Some controls draw a state change straight to the screen rather than
+    // through WM_PAINT, which would leave it without alpha; paint it again.
+    switch (msg) {
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_MOUSEMOVE:
+        case WM_MOUSELEAVE:
+        case WM_SETFOCUS:
+        case WM_KILLFOCUS:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        case WM_CAPTURECHANGED:
+        case WM_ENABLE:
+        case WM_UPDATEUISTATE:
+        case WM_SETTEXT:
+        case BM_SETSTATE:
+        case BM_SETCHECK:
+            InvalidateRect(hwnd, nullptr, FALSE);
+            break;
+    }
+    return result;
+}
+
+BOOL CALLBACK glass_control(HWND child, LPARAM skip) {
+    if (child != reinterpret_cast<HWND>(skip))
+        SetWindowSubclass(child, glass_control_proc, 2, 0);
+    return TRUE;
+}
+
+bool high_contrast() {
+    HIGHCONTRASTW hc = {};
+    hc.cbSize = sizeof hc;
+    return SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0) &&
+           (hc.dwFlags & HCF_HIGHCONTRASTON);
+}
+
 }  // namespace
 
 class SettingsWindow {
@@ -146,6 +252,7 @@ public:
     ~SettingsWindow() {
         if (hwnd_) DestroyWindow(hwnd_);
         destroy_fonts();
+        if (painting_) BufferedPaintUnInit();
     }
 
     void show();
@@ -167,6 +274,9 @@ private:
     void set_value_text(int index);
     double slider_value(int index) const;
     void scroll_to(int offset);
+    HWND create_frame(HINSTANCE instance);
+    void make_glass();
+    void paint(HWND hwnd);
 
     SettingsStore& store_;
     Engine& engine_;
@@ -177,6 +287,7 @@ private:
     UINT dpi_ = 96;
     int scroll_ = 0, content_height_ = 0, header_height_ = 0, footer_height_ = 0;
     bool loading_ = false;
+    bool glass_ = false, painting_ = false;
     HFONT font_ = nullptr, small_ = nullptr, heading_ = nullptr, big_ = nullptr;
     HBRUSH background_ = nullptr;
 
@@ -207,10 +318,7 @@ void SettingsWindow::show() {
         wc.hIcon = nullptr;
         RegisterClassExW(&wc);
         dpi_ = GetDpiForSystem();
-        hwnd_ = CreateWindowExW(0, SETTINGS_CLASS, L"WinDuo2 settings",
-                                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT,
-                                CW_USEDEFAULT, px(560), px(760), nullptr, nullptr, wc.hInstance,
-                                this);
+        hwnd_ = create_frame(wc.hInstance);
         if (!hwnd_) return;
         dpi_ = GetDpiForWindow(hwnd_);
         body_ = CreateWindowExW(WS_EX_CONTROLPARENT, SETTINGS_BODY_CLASS, L"",
@@ -218,12 +326,93 @@ void SettingsWindow::show() {
                                 hwnd_, nullptr, wc.hInstance, this);
         make_fonts();
         create_controls();
+        make_glass();
         load();
         layout();
     }
     ShowWindow(hwnd_, SW_SHOWNORMAL);
+    // The first frame painted now, so Windows' opening animation plays on the
+    // finished window rather than on an empty one.
+    UpdateWindow(hwnd_);
     SetForegroundWindow(hwnd_);
     refresh_status();
+}
+
+// The window itself. A uiAccess process's windows can land in the uiAccess
+// z-order band, where Windows plays none of its opening and closing
+// animations; the settings window is an ordinary window, so it is made in the
+// desktop band like any other app's when that can be asked for.
+HWND SettingsWindow::create_frame(HINSTANCE instance) {
+    const DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    if (has_ui_access()) {
+        typedef HWND(WINAPI * CreateWindowInBandFn)(DWORD, LPCWSTR, LPCWSTR, DWORD, int, int, int,
+                                                    int, HWND, HMENU, HINSTANCE, LPVOID, DWORD);
+        auto in_band = reinterpret_cast<CreateWindowInBandFn>(reinterpret_cast<void*>(
+            GetProcAddress(GetModuleHandleW(L"user32.dll"), "CreateWindowInBand")));
+        if (in_band) {
+            HWND made = in_band(0, SETTINGS_CLASS, L"WinDuo2 settings", style, CW_USEDEFAULT,
+                                CW_USEDEFAULT, px(560), px(760), nullptr, nullptr, instance, this,
+                                ZBID_DESKTOP);
+            if (made) return made;
+            LOGW("ui", "the settings window could not be made in the desktop band (%lu)",
+                 GetLastError());
+            hwnd_ = nullptr;  // in case creation got as far as WM_NCCREATE
+        }
+    }
+    return CreateWindowExW(0, SETTINGS_CLASS, L"WinDuo2 settings", style, CW_USEDEFAULT,
+                           CW_USEDEFAULT, px(560), px(760), nullptr, nullptr, instance, this);
+}
+
+// Windows' own animations on, and the acrylic backdrop behind everything.
+void SettingsWindow::make_glass() {
+    BOOL off = FALSE;
+    DwmSetWindowAttribute(hwnd_, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+    if (windows_build() < BUILD_FOR_BACKDROP || high_contrast()) return;
+    painting_ = SUCCEEDED(BufferedPaintInit());
+    if (!painting_) return;
+    // A light backdrop: the window's colours are drawn for one.
+    DwmSetWindowAttribute(hwnd_, WD_DWMWA_USE_IMMERSIVE_DARK_MODE, &off, sizeof off);
+    int backdrop = WD_DWMSBT_TRANSIENTWINDOW;
+    if (FAILED(DwmSetWindowAttribute(hwnd_, WD_DWMWA_SYSTEMBACKDROP_TYPE, &backdrop,
+                                     sizeof backdrop)))
+        return;
+    MARGINS whole = {-1, -1, -1, -1};
+    if (FAILED(DwmExtendFrameIntoClientArea(hwnd_, &whole))) return;
+    glass_ = true;
+    EnumChildWindows(hwnd_, glass_control, reinterpret_cast<LPARAM>(body_));
+}
+
+// The window and the scrolling body: their background, and the hairlines
+// under the reading and above the buttons.
+void SettingsWindow::paint(HWND hwnd) {
+    PAINTSTRUCT ps;
+    HDC dc = BeginPaint(hwnd, &ps);
+    HDC target = dc;
+    HPAINTBUFFER buffer = nullptr;
+    if (glass_) {
+        buffer = BeginBufferedPaint(dc, &ps.rcPaint, BPBF_TOPDOWNDIB, nullptr, &target);
+        if (!buffer) {
+            EndPaint(hwnd, &ps);
+            return;
+        }
+        FillRect(target, &ps.rcPaint, background_);  // white, taken out below
+    }
+    if (hwnd == hwnd_) {
+        RECT client;
+        GetClientRect(hwnd_, &client);
+        HBRUSH line = CreateSolidBrush(RGB(225, 225, 230));
+        RECT top = {0, header_height_ - 1, client.right, header_height_};
+        int bottom_y = std::max((int)client.bottom - footer_height_, header_height_);
+        RECT bottom = {0, bottom_y, client.right, bottom_y + 1};
+        FillRect(target, &top, line);
+        FillRect(target, &bottom, line);
+        DeleteObject(line);
+    }
+    if (buffer) {
+        white_to_alpha(buffer);
+        EndBufferedPaint(buffer, TRUE);
+    }
+    EndPaint(hwnd, &ps);
 }
 
 void SettingsWindow::make_fonts() {
@@ -529,23 +718,21 @@ LRESULT SettingsWindow::handle(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
         case WM_SIZE:
             if (is_main) layout();  // the body is sized by layout() itself
             return 0;
-        case WM_PAINT: {
-            if (!is_main) break;
-            // Hairlines under the reading and above the buttons.
-            PAINTSTRUCT ps;
-            HDC dc = BeginPaint(hwnd_, &ps);
-            RECT client;
-            GetClientRect(hwnd_, &client);
-            HBRUSH line = CreateSolidBrush(RGB(225, 225, 230));
-            RECT top = {0, header_height_ - 1, client.right, header_height_};
-            int bottom_y = std::max((int)client.bottom - footer_height_, header_height_);
-            RECT bottom = {0, bottom_y, client.right, bottom_y + 1};
-            FillRect(dc, &top, line);
-            FillRect(dc, &bottom, line);
-            DeleteObject(line);
-            EndPaint(hwnd_, &ps);
+        case WM_ERASEBKGND:
+            if (glass_) return 1;  // painted on white in WM_PAINT, then made see-through
+            break;
+        case WM_PRINTCLIENT:
+            // A themed button asking for what is behind its rounded corners.
+            if (glass_) {
+                RECT client;
+                GetClientRect(hwnd, &client);
+                FillRect(reinterpret_cast<HDC>(wparam), &client, background_);
+                return 0;
+            }
+            break;
+        case WM_PAINT:
+            paint(hwnd);
             return 0;
-        }
         case WM_DPICHANGED: {
             if (!is_main) break;
             dpi_ = HIWORD(wparam);

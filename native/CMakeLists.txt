@@ -50,7 +50,8 @@ foreach(variant IN ITEMS plain uiaccess)
     target_compile_definitions(${target} PRIVATE WD_UIACCESS)
   endif()
   target_link_libraries(${target} PRIVATE
-    d3d11 dxgi dcomp d3dcompiler comctl32 winmm shell32 ole32 uuid advapi32 windowsapp)
+    d3d11 dxgi dcomp d3dcompiler comctl32 winmm shell32 ole32 uuid advapi32 windowsapp
+    dwmapi uxtheme)
   if(MSVC)
     target_compile_options(${target} PRIVATE
       /W4 /WX /permissive- /utf-8 /external:anglebrackets /external:W0 /bigobj)
