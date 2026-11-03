@@ -51,7 +51,7 @@ After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `
 - **Folded past flat, it stays off,** so unfolding from tent or tablet mode does not count as closing.
 - **Start, search and the notification flyouts close when the effect starts,** unless WinDuo2 was installed with `WinDuo2-Setup.exe` and is signed (see [docs/uiaccess.md](docs/uiaccess.md)). Windows keeps them in a layer above every window an ordinary app can make, so the portable exe cannot blur them in place; closing them is what the lid closing would do anyway. The lock screen is out of reach either way: it is a separate desktop no app can draw on. The pointer is hidden for the length of the effect and comes back when it ends. An app that draws a cursor of its own, as some games do, keeps it showing.
 - **Windows turns the screen off when the lid shuts,** so you only see the effect during the closing movement.
-- Primary display only, and only while it is upright: on a rotated screen the effect is off.
+- Primary display only, and only while it is landscape: in portrait the effect is off. Panels mounted sideways or upside down, which Windows turns upright, are fine.
 
 ## Contributing
 

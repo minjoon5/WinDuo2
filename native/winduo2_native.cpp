@@ -81,7 +81,7 @@ struct WdInfo {
     int texture_height;
     int inset;  // margin, in texture pixels
     int max_level;
-    int rotation;  // DXGI_MODE_ROTATION of the output; 1 is upright
+    int rotation;  // DXGI_MODE_ROTATION of the duplicated image; 1 is as scanned out
     int excluded;  // the overlay is kept out of screen capture
 };
 
@@ -159,13 +159,26 @@ cbuffer ScaleConstants : register(b0) {
     float2 targetOrigin;  // the picture's top-left in the texture, in pixels
     float2 targetSize;    // the picture's size, in pixels
     float2 sourceTexel;   // one destination pixel, in source texture coordinates
-    float2 scalePad;
+    float sourceRotation; // DXGI_MODE_ROTATION of the duplicated image
+    float scalePad;
 };
+
+// Desktop Duplication hands over the image as the panel scans it out, not
+// turned the way the desktop is: on a panel mounted sideways or upside down
+// it comes rotated. A point on the upright picture, in unit coordinates, to
+// where it is in that image; as the DXGIDesktopDuplication sample maps it.
+float2 sourceUv(float2 uv) {
+    int rotation = (int)(sourceRotation + 0.5);
+    if (rotation == 2) return float2(uv.y, 1.0 - uv.x);  // ROTATE90
+    if (rotation == 3) return 1.0 - uv;                  // ROTATE180
+    if (rotation == 4) return float2(1.0 - uv.y, uv.x);  // ROTATE270
+    return uv;
+}
 
 // Four taps a quarter of a destination pixel apart: close to an area filter
 // for the downscales this does, where one bilinear tap would alias.
 float4 ps_scale(float4 position : SV_Position) : SV_Target {
-    float2 uv = (position.xy - targetOrigin) / targetSize;
+    float2 uv = sourceUv((position.xy - targetOrigin) / targetSize);
     float2 q = sourceTexel * 0.25;
     float3 colour = desktop.SampleLevel(linearClamp, uv + float2(-q.x, -q.y), 0).rgb
                   + desktop.SampleLevel(linearClamp, uv + float2( q.x, -q.y), 0).rgb
@@ -371,7 +384,8 @@ struct ScaleConstants {
     float target_origin[2];
     float target_size[2];
     float source_texel[2];
-    float pad[2];
+    float rotation;
+    float pad;
 };
 
 struct DownsampleConstants {
@@ -409,6 +423,8 @@ struct Pipeline {
     int levels = 1;
     float padded_origin[2] = {0, 0};
     float padded_size[2] = {0, 0};
+    // DXGI_MODE_ROTATION of the duplicated desktop image.
+    int rotation = DXGI_MODE_ROTATION_IDENTITY;
 
     // The padded picture, sRGB, with its whole mip chain.
     ComPtr<ID3D11Texture2D> picture;
@@ -609,8 +625,13 @@ struct Pipeline {
         sc.target_origin[0] = sc.target_origin[1] = (float)inset;
         sc.target_size[0] = (float)picture_w;
         sc.target_size[1] = (float)picture_h;
-        sc.source_texel[0] = 1.0f / (float)picture_w;
-        sc.source_texel[1] = 1.0f / (float)picture_h;
+        // A quarter turn swaps the axes: a destination pixel across is a
+        // source pixel down.
+        bool quarter = rotation == DXGI_MODE_ROTATION_ROTATE90 ||
+                       rotation == DXGI_MODE_ROTATION_ROTATE270;
+        sc.source_texel[0] = 1.0f / (float)(quarter ? picture_h : picture_w);
+        sc.source_texel[1] = 1.0f / (float)(quarter ? picture_w : picture_h);
+        sc.rotation = (float)rotation;
         context->UpdateSubresource(cb_scale.Get(), 0, nullptr, &sc, 0, 0);
         begin_pass(level_rtv[0].Get(), (float)inset, (float)inset, (float)picture_w,
                    (float)picture_h, ps_scale.Get(), cb_scale.Get());
@@ -732,7 +753,6 @@ struct Renderer {
     ComPtr<IDXGIAdapter1> adapter;
     ComPtr<IDXGIOutput1> output;
     ComPtr<IDXGIOutputDuplication> duplication;
-    int rotation = DXGI_MODE_ROTATION_IDENTITY;
     // When a picture was first asked for and none was there, and whether the
     // desktop copy holds an empty frame kept in case no real one comes.
     double wanted_since_ms = 0.0;
@@ -773,7 +793,7 @@ struct Renderer {
                     adapter = candidate;
                     CHECK(out.As(&output), "IDXGIOutput1");
                     monitor_rect = desc.DesktopCoordinates;
-                    rotation = desc.Rotation;
+                    pipe.rotation = desc.Rotation;
                     return true;
                 }
                 out.Reset();
@@ -889,7 +909,7 @@ struct Renderer {
         }
         DXGI_OUTDUPL_DESC desc;
         duplication->GetDesc(&desc);
-        rotation = desc.Rotation;
+        pipe.rotation = desc.Rotation;
         reset_wait();
         return true;
     }
@@ -1083,7 +1103,7 @@ WD_API void wd_info(void* handle, WdInfo* info) {
     info->texture_height = r->pipe.texture_h;
     info->inset = r->pipe.inset;
     info->max_level = r->pipe.levels - 1;
-    info->rotation = r->rotation;
+    info->rotation = r->pipe.rotation;
     info->excluded = r->excluded ? 1 : 0;
 }
 
@@ -1235,6 +1255,52 @@ WD_API int wd_selftest() {
         set_error("dimming drew 0x%08x from 0x%08x", dimmed, flat);
         return 8;
     }
-    set_error("ok: flat 0x%08x, dimmed 0x%08x", flat, dimmed);
+
+    // A panel mounted sideways: the duplicated image comes as the panel scans
+    // it out, tall, here white along its top and black below. Turned upright,
+    // that top edge is the picture's left side for ROTATE270 and its right
+    // side for ROTATE90.
+    if (!pipe.ensure_desktop(sh, sw)) return 3;
+    std::vector<uint32_t> halves(sh * sw);
+    for (int y = 0; y < sw; ++y)
+        for (int x = 0; x < sh; ++x) halves[y * sh + x] = y < sw / 2 ? 0xffffffffu : 0xff000000u;
+    pipe.context->UpdateSubresource(pipe.desktop.Get(), 0, nullptr, halves.data(), sh * 4, 0);
+    p.blur_strength = 0.0f;
+    p.dim_strength = 0.0f;
+    auto sides = [&](int rotation, int& left, int& right) -> bool {
+        pipe.rotation = rotation;
+        pipe.scale_desktop_into_picture();
+        pipe.draw_effect(rtv.Get(), p);
+        pipe.context->CopyResource(staging.Get(), target.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (FAILED(pipe.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
+        auto* row = (uint32_t*)((uint8_t*)mapped.pData + (sh / 2) * mapped.RowPitch);
+        left = (row[sw / 4] >> 8) & 0xff;
+        right = (row[sw * 3 / 4] >> 8) & 0xff;
+        pipe.context->Unmap(staging.Get(), 0);
+        return true;
+    };
+    int left = 0, right = 0;
+    if (!sides(DXGI_MODE_ROTATION_ROTATE270, left, right)) {
+        set_error("reading the rotated frame back failed");
+        return 6;
+    }
+    if (left < 0xc0 || right > 0x40) {
+        set_error("a ROTATE270 desktop drew %02x on the left and %02x on the right, "
+                  "not white then black", left, right);
+        return 9;
+    }
+    if (!sides(DXGI_MODE_ROTATION_ROTATE90, left, right)) {
+        set_error("reading the rotated frame back failed");
+        return 6;
+    }
+    if (left > 0x40 || right < 0xc0) {
+        set_error("a ROTATE90 desktop drew %02x on the left and %02x on the right, "
+                  "not black then white", left, right);
+        return 9;
+    }
+    pipe.rotation = DXGI_MODE_ROTATION_IDENTITY;
+
+    set_error("ok: flat 0x%08x, dimmed 0x%08x, rotated pictures upright", flat, dimmed);
     return 0;
 }

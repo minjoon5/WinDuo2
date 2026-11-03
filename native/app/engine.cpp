@@ -201,19 +201,23 @@ bool Engine::make_renderer() {
         return false;
     }
     wd_info(renderer_, &info_);
-    if (info_.rotation != 0 && info_.rotation != 1) {
+    // The effect bends the screen about its bottom edge, which is where the
+    // hinge is only while the desktop is landscape. How the panel itself is
+    // mounted does not matter: some are fitted sideways or upside down and
+    // turned upright by Windows, and the renderer turns their capture to match.
+    if (info_.screen_height > info_.screen_width) {
         wd_destroy(renderer_);
         renderer_ = nullptr;
-        problem_ = "The display is rotated; the effect is off until it is upright again.";
+        problem_ = "The display is in portrait; the effect is off until it is landscape again.";
         LOGI("app", "%s", problem_.c_str());
         changed_ = true;
         return false;
     }
     problem_.clear();
     changed_ = true;
-    LOGI("native", "native renderer ready: %dx%d, picture %dx%d, %d blur levels%s",
+    LOGI("native", "native renderer ready: %dx%d, picture %dx%d, %d blur levels, rotation %d%s",
          info_.screen_width, info_.screen_height, info_.picture_width, info_.picture_height,
-         info_.max_level, info_.excluded ? "" : ", NOT excluded from capture");
+         info_.max_level, info_.rotation, info_.excluded ? "" : ", NOT excluded from capture");
     LOGI("app", "drawing with the Direct3D 11 renderer, paced by the display (%.0f Hz)",
          refresh_hz_);
     return true;
