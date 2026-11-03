@@ -422,9 +422,9 @@ void SettingsWindow::make_fonts() {
     SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof metrics, &metrics, 0, dpi_);
     LOGFONTW base = metrics.lfMessageFont;
     font_ = CreateFontIndirectW(&base);
-    LOGFONTW small = base;
-    small.lfHeight = (LONG)std::lround(base.lfHeight * 0.9);
-    small_ = CreateFontIndirectW(&small);
+    LOGFONTW smaller = base;
+    smaller.lfHeight = (LONG)std::lround(base.lfHeight * 0.9);
+    small_ = CreateFontIndirectW(&smaller);
     LOGFONTW heading = base;
     heading.lfWeight = FW_SEMIBOLD;
     heading.lfHeight = (LONG)std::lround(base.lfHeight * 1.15);
