@@ -12,6 +12,9 @@
 //   premultiplied alpha. DWM composes it directly; nothing is read back.
 // - Fades are DirectComposition opacity animations, so DWM runs them and the
 //   app does not have to keep drawing to fade.
+// - The desktop is taken on a thread of its own, which waits for each frame
+//   the compositor makes. The frame loop only picks up the newest; see
+//   Renderer::capture_loop for why it cannot ask for them itself.
 //
 // The shaders began as ports of the Python app's winduo2/render/shaders.py.
 // The app drives everything through the plain C API at the bottom
@@ -26,6 +29,7 @@
 #include <windows.h>
 
 #include <d3d11.h>
+#include <d3d11_4.h>
 #include <d3dcompiler.h>
 #include <dcomp.h>
 #include <dxgi1_2.h>
@@ -40,7 +44,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <new>
+#include <thread>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -735,6 +741,11 @@ static bool register_class() {
 // an empty one is taken as the picture anyway.
 static const double EMPTY_FRAME_GRACE_MS = 250.0;
 
+// How long after the last frame that wanted a picture the capture thread goes
+// on taking desktop frames, and how long it waits for one before looking up.
+static const double CAPTURE_IDLE_MS = 250.0;
+static const UINT CAPTURE_WAIT_MS = 25;
+
 #ifndef WDA_EXCLUDEFROMCAPTURE
 #define WDA_EXCLUDEFROMCAPTURE 0x00000011
 #endif
@@ -753,10 +764,21 @@ struct Renderer {
     ComPtr<IDXGIAdapter1> adapter;
     ComPtr<IDXGIOutput1> output;
     ComPtr<IDXGIOutputDuplication> duplication;
-    // When a picture was first asked for and none was there, and whether the
-    // desktop copy holds an empty frame kept in case no real one comes.
+    // The thread that takes the desktop's frames; see capture_loop.
+    std::thread capture_thread;
+    HANDLE capture_wake = nullptr;  // wakes it from idling
+    std::atomic<bool> capture_stop{false};
+    std::atomic<bool> capture_lost{false};  // it gave up; capture must start over
+    std::atomic<HRESULT> capture_error{S_OK};
+    std::atomic<double> pulled_at_ms{0.0};  // when a picture was last wanted
+    // Guards the desktop copy and what is known of it: whether it holds a
+    // real frame the picture has not been made from yet, and whether it
+    // holds anything current at all.
+    std::mutex desktop_lock;
+    bool desktop_fresh = false;
+    bool desktop_filled = false;
+    // When a picture was first asked for and none was there.
     double wanted_since_ms = 0.0;
-    bool held_empty = false;
 
     ComPtr<IDXGISwapChain1> swapchain;
     // Signalled when the swap chain can take another frame without waiting:
@@ -772,7 +794,8 @@ struct Renderer {
     ComPtr<IDCompositionEffectGroup> effects;
 
     ~Renderer() {
-        duplication.Reset();
+        stop_capture();
+        if (capture_wake) CloseHandle(capture_wake);
         if (frame_ready) CloseHandle(frame_ready);
         if (hwnd) DestroyWindow(hwnd);
     }
@@ -815,6 +838,16 @@ struct Renderer {
                                    levels + 1, 1, D3D11_SDK_VERSION, &pipe.device, nullptr,
                                    &pipe.context);
         CHECK(hr, "D3D11CreateDevice");
+        // The capture thread copies each desktop frame with this context
+        // while the frame loop draws with it.
+        ComPtr<ID3D11Multithread> multithread;
+        CHECK(pipe.context.As(&multithread), "ID3D11Multithread");
+        multithread->SetMultithreadProtected(TRUE);
+        capture_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!capture_wake) {
+            set_error("CreateEvent failed (%lu)", GetLastError());
+            return false;
+        }
         return true;
     }
 
@@ -911,15 +944,25 @@ struct Renderer {
         duplication->GetDesc(&desc);
         pipe.rotation = desc.Rotation;
         reset_wait();
+        desktop_fresh = desktop_filled = false;
+        capture_stop = false;
+        capture_lost = false;
+        capture_error = S_OK;
+        pulled_at_ms = 0.0;
+        capture_thread = std::thread([this] { capture_loop(); });
         return true;
     }
 
-    void stop_capture() { duplication.Reset(); }
-
-    void reset_wait() {
-        wanted_since_ms = 0.0;
-        held_empty = false;
+    void stop_capture() {
+        if (capture_thread.joinable()) {
+            capture_stop = true;
+            SetEvent(capture_wake);
+            capture_thread.join();
+        }
+        duplication.Reset();
     }
+
+    void reset_wait() { wanted_since_ms = 0.0; }
 
     // While a picture is wanted and none has come, a transparent frame on the
     // overlay, which is still at zero opacity: it makes the compositor draw
@@ -934,62 +977,97 @@ struct Renderer {
         if (SUCCEEDED(swapchain->Present(1, DXGI_PRESENT_DO_NOT_WAIT))) permit = false;
     }
 
-    // The newest desktop image into the picture, if there is a new one.
-    // Returns WD_NEW_PICTURE and/or WD_CAPTURE_LOST.
-    int pull_picture() {
-        if (!duplication && !start_capture()) return WD_CAPTURE_LOST;
-        if (!pipe.has_picture && wanted_since_ms == 0.0) wanted_since_ms = now_ms();
-        int result = take_frame();
-        if (!pipe.has_picture && held_empty && !(result & WD_CAPTURE_LOST) &&
-            now_ms() - wanted_since_ms >= EMPTY_FRAME_GRACE_MS) {
-            pipe.scale_desktop_into_picture();
-            result |= WD_NEW_PICTURE;
-        }
-        if (pipe.has_picture) reset_wait();
-        return result;
-    }
-
-    int take_frame() {
-        DXGI_OUTDUPL_FRAME_INFO info;
-        ComPtr<IDXGIResource> resource;
-        HRESULT hr = duplication->AcquireNextFrame(0, &info, &resource);
-        if (hr == DXGI_ERROR_WAIT_TIMEOUT) return 0;
-        if (hr == DXGI_ERROR_ACCESS_LOST || hr == DXGI_ERROR_INVALID_CALL) {
-            // A mode change, the secure desktop, or the session switching:
-            // start over next frame. Starting over is quick.
-            duplication.Reset();
-            return WD_CAPTURE_LOST;
-        }
-        if (FAILED(hr)) {
-            set_error("AcquireNextFrame failed (0x%08lx)", (unsigned long)hr);
-            duplication.Reset();
-            return WD_CAPTURE_LOST;
-        }
-        int result = 0;
-        // A frame with no present time has no desktop image in it: a pointer
-        // move, or the first frame of a new duplication, which after the
-        // desktop has sat still for a while is empty and comes out black.
-        // With no picture yet, that one is only kept aside, and taken once no
-        // real frame has come for a while, as on a desktop where nothing
-        // changes at all.
-        bool real = info.LastPresentTime.QuadPart != 0;
-        if (real || (!pipe.has_picture && !held_empty)) {
+    // Desktop Duplication, on its own thread: each frame the compositor makes
+    // is copied into the desktop copy as it comes, and handed straight back.
+    //
+    // The frame loop used to ask for the frame itself, without waiting, at
+    // the top of every frame it drew. But it draws when the swap chain says
+    // so, which is as the compositor starts on a frame of its own: the
+    // desktop frame from that pass was never there yet, and the one from the
+    // pass before was being held just as the compositor came to replace it,
+    // which makes it skip the update until its next pass. A window dragged
+    // under the effect came through at a fraction of the display's rate,
+    // unevenly, while the effect itself drew every frame. Waiting here
+    // instead takes each frame the moment it is made and gives it back long
+    // before the next.
+    //
+    // Only while pictures are being asked for: left alone, the duplication
+    // keeps what changed, and the first frame taken afterwards has it all.
+    void capture_loop() {
+        IDXGIOutputDuplication* source = duplication.Get();
+        while (!capture_stop) {
+            if (now_ms() - pulled_at_ms > CAPTURE_IDLE_MS) {
+                {
+                    // What the copy holds goes stale from here on.
+                    std::lock_guard<std::mutex> lock(desktop_lock);
+                    desktop_fresh = desktop_filled = false;
+                }
+                WaitForSingleObject(capture_wake, INFINITE);
+                continue;
+            }
+            DXGI_OUTDUPL_FRAME_INFO info;
+            ComPtr<IDXGIResource> resource;
+            HRESULT hr = source->AcquireNextFrame(CAPTURE_WAIT_MS, &info, &resource);
+            if (hr == DXGI_ERROR_WAIT_TIMEOUT) continue;
+            if (FAILED(hr)) {
+                // DXGI_ERROR_ACCESS_LOST and DXGI_ERROR_INVALID_CALL are a
+                // mode change, the secure desktop, or the session switching:
+                // nothing to report, and starting over is quick.
+                if (hr != DXGI_ERROR_ACCESS_LOST && hr != DXGI_ERROR_INVALID_CALL)
+                    capture_error = hr;
+                capture_lost = true;
+                return;
+            }
+            // A frame with no present time has no desktop image in it: a pointer
+            // move, or the first frame of a new duplication, which after the
+            // desktop has sat still for a while is empty and comes out black.
+            // That one is copied only when the copy holds nothing else, and
+            // made the picture only once no real frame has come for a while,
+            // as on a desktop where nothing changes at all.
+            bool real = info.LastPresentTime.QuadPart != 0;
             ComPtr<ID3D11Texture2D> frame;
             if (SUCCEEDED(resource.As(&frame))) {
                 D3D11_TEXTURE2D_DESC fd;
                 frame->GetDesc(&fd);
-                if (pipe.ensure_desktop((int)fd.Width, (int)fd.Height)) {
+                std::lock_guard<std::mutex> lock(desktop_lock);
+                if ((real || !desktop_filled) && pipe.ensure_desktop((int)fd.Width, (int)fd.Height)) {
                     pipe.context->CopyResource(pipe.desktop.Get(), frame.Get());
-                    if (real) {
-                        pipe.scale_desktop_into_picture();
-                        result |= WD_NEW_PICTURE;
-                    } else {
-                        held_empty = true;
-                    }
+                    desktop_filled = true;
+                    if (real) desktop_fresh = true;
                 }
             }
+            frame.Reset();
+            resource.Reset();
+            source->ReleaseFrame();
         }
-        duplication->ReleaseFrame();
+    }
+
+    // The newest desktop image into the picture, if there is a new one.
+    // Returns WD_NEW_PICTURE and/or WD_CAPTURE_LOST.
+    int pull_picture() {
+        if (!duplication && !start_capture()) return WD_CAPTURE_LOST;
+        if (capture_lost) {
+            HRESULT hr = capture_error;
+            if (FAILED(hr)) set_error("AcquireNextFrame failed (0x%08lx)", (unsigned long)hr);
+            stop_capture();
+            return WD_CAPTURE_LOST;
+        }
+        double now = now_ms();
+        pulled_at_ms = now;
+        SetEvent(capture_wake);
+        if (!pipe.has_picture && wanted_since_ms == 0.0) wanted_since_ms = now;
+        int result = 0;
+        {
+            std::lock_guard<std::mutex> lock(desktop_lock);
+            bool overdue = !pipe.has_picture && desktop_filled &&
+                           now - wanted_since_ms >= EMPTY_FRAME_GRACE_MS;
+            if (desktop_fresh || overdue) {
+                desktop_fresh = false;
+                pipe.scale_desktop_into_picture();
+                result |= WD_NEW_PICTURE;
+            }
+        }
+        if (pipe.has_picture) reset_wait();
         return result;
     }
 
@@ -1109,8 +1187,9 @@ WD_API void wd_info(void* handle, WdInfo* info) {
 
 WD_API void* wd_hwnd(void* handle) { return static_cast<Renderer*>(handle)->hwnd; }
 
-// Starts or stops Desktop Duplication. Starting is quick: the first frame
-// arrives on a later wd_frame. 1 on success.
+// Starts or stops Desktop Duplication. Starting is quick: frames are taken
+// once a wd_frame wants a picture, and the first arrives on a later one.
+// 1 on success.
 WD_API int wd_capture(void* handle, int on) {
     auto* r = static_cast<Renderer*>(handle);
     if (!on) {
