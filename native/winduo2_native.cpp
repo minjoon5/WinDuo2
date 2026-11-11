@@ -658,15 +658,27 @@ struct Pipeline {
         has_picture = true;
     }
 
+    // Each level is drawn only over the picture and a few texels around it.
+    // The margin beyond is black in every level from the start, and stays
+    // black: the filter reaches three texels of the level above, so what the
+    // picture bleeds into the margin never gets further than that from its
+    // edge in any level. On a screen at 100% scaling the margin is more than
+    // half the texture, and this is done for every desktop frame.
     void build_pyramid() {
+        static const int BLEED = 8;
         int source_w = texture_w, source_h = texture_h;
         for (int level = 1; level < levels; ++level) {
             int w = std::max(texture_w >> level, 1);
             int h = std::max(texture_h >> level, 1);
             DownsampleConstants dc = {{1.0f / (float)source_w, 1.0f / (float)source_h}, {(float)w, (float)h}};
             context->UpdateSubresource(cb_down.Get(), 0, nullptr, &dc, 0, 0);
-            begin_pass(level_rtv[level].Get(), 0, 0, (float)w, (float)h, ps_downsample.Get(),
-                       cb_down.Get());
+            int round_up = (1 << level) - 1;
+            int x0 = std::max((inset >> level) - BLEED, 0);
+            int y0 = std::max((inset >> level) - BLEED, 0);
+            int x1 = std::min(((inset + picture_w + round_up) >> level) + BLEED, w);
+            int y1 = std::min(((inset + picture_h + round_up) >> level) + BLEED, h);
+            begin_pass(level_rtv[level].Get(), (float)x0, (float)y0, (float)(x1 - x0),
+                       (float)(y1 - y0), ps_downsample.Get(), cb_down.Get());
             draw_with(level_srv[level - 1].Get());
             source_w = w;
             source_h = h;
@@ -780,6 +792,10 @@ struct Renderer {
     std::atomic<bool> capture_lost{false};  // it gave up; capture must start over
     std::atomic<HRESULT> capture_error{S_OK};
     std::atomic<double> pulled_at_ms{0.0};  // when a picture was last wanted
+    // Desktop frames copied, and frames the compositor made that were never
+    // seen because a later one replaced them first; for wd_capture_stats.
+    std::atomic<int> frames_taken{0};
+    std::atomic<int> frames_missed{0};
     // Guards what is known of the desktop copy: which texture it is, whether
     // it holds a real frame the picture has not been made from yet, and
     // whether it holds anything current at all.
@@ -1061,6 +1077,10 @@ struct Renderer {
                     desktop_filled = true;
                     if (real) desktop_fresh = true;
                 }
+                if (real) {
+                    ++frames_taken;
+                    if (info.AccumulatedFrames > 1) frames_missed += (int)info.AccumulatedFrames - 1;
+                }
             }
             frame.Reset();
             resource.Reset();
@@ -1294,6 +1314,14 @@ WD_API int wd_capture(void* handle, int on) {
 // then the effect, presented on the next vertical blank. Returns WD_* bits.
 WD_API int wd_frame(void* handle, const WdParams* params, int flags, WdTimings* timings) {
     return static_cast<Renderer*>(handle)->frame(*params, flags, timings);
+}
+
+// How many desktop frames the capture has copied since this was last asked,
+// and how many more the compositor made that a later one replaced unseen.
+WD_API void wd_capture_stats(void* handle, int* taken, int* missed) {
+    auto* r = static_cast<Renderer*>(handle);
+    *taken = r->frames_taken.exchange(0);
+    *missed = r->frames_missed.exchange(0);
 }
 
 // The swap chain's "ready for a frame" handle, for a loop that waits on it

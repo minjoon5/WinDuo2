@@ -14,7 +14,6 @@ static const double PREWARM_LINGER = 2.0;
 static const double HOLD_AFTER_OPEN = 2.0;
 static const double PICTURE_FADE_IN = 0.35;
 static const float FADE_IN = 0.07f;
-static const float FADE_OUT = 0.22f;
 static const double RAISE_INTERVAL = 0.25;
 static const DWORD BACKSTOP_MS = 50;
 static const double IDLE_POLL = IDLE_INTERVAL * 0.5;
@@ -76,9 +75,9 @@ std::string FrameStats::summary() {
     for (double interval : intervals_)
         if (interval >= period_ * 1.5) ++missed;
     snprintf(text, sizeof text,
-             "%zu frames in %.2f s, %.0f fps of %.0f, %d missed; ms median/p95/max: "
+             "%zu frames in %.2f s, %.0f fps of %.0f, %d missed, %d dropped; ms median/p95/max: "
              "interval %s, work %s, upload %s x%zu, paint %s, present %s",
-             frames, span, fps, 1.0 / period_, missed, triple(intervals_).c_str(),
+             frames, span, fps, 1.0 / period_, missed, dropped_, triple(intervals_).c_str(),
              triple(work_).c_str(), triple(uploads_).c_str(), uploads_.size(),
              triple(paints_).c_str(), triple(presents_).c_str());
     return text;
@@ -228,7 +227,6 @@ void Engine::destroy_renderer() {
     if (renderer_) wd_destroy(renderer_);
     renderer_ = nullptr;
     shown_ = revealed_ = has_picture_ = placeholder_ = false;
-    clear_at_ = 0.0;
 }
 
 void Engine::raise_topmost() {
@@ -261,10 +259,6 @@ DWORD Engine::timeout_ms() const {
     } else {
         timeout = (DWORD)std::lround(controller_.poll_interval() * 1000);
     }
-    if (clear_at_ > 0.0) {
-        double left = (clear_at_ - monotonic()) * 1000;
-        timeout = std::min(timeout, (DWORD)std::max(0.0, left));
-    }
     return timeout;
 }
 
@@ -274,15 +268,7 @@ void Engine::on_waitable_signalled() {
 
 void Engine::tick() {
     if (!running_) return;
-    double now = monotonic();
-    if (clear_at_ > 0.0 && now >= clear_at_) {
-        clear_at_ = 0.0;
-        if (!shown_ && renderer_) {
-            wd_clear(renderer_);
-            has_picture_ = placeholder_ = false;
-        }
-    }
-    step(now);
+    step(monotonic());
 }
 
 void Engine::step(double now) {
@@ -302,7 +288,7 @@ void Engine::step(double now) {
     if (!controller_.step(now, frame)) {
         if (shown_ && (!held_ || hold_expired(now))) {
             held_ = false;
-            dismiss(true);
+            dismiss();
         }
         if (held_ && lid_opened_at_.load() > held_at_)
             prewarm_until_ = std::max(prewarm_until_, now + PREWARM_LINGER);
@@ -312,19 +298,19 @@ void Engine::step(double now) {
 
     if (!shown_) {
         if (!present()) return;
-        stats_.begin(period());
+        begin_stats();
     } else if (held_) {
         held_ = false;
         LOGI("app", "reopening from the overlay held over the shut lid");
         pointer_.begin();
-        stats_.begin(period());
+        begin_stats();
     }
 
     draw(frame);
     pointer_.watch();
 
     if (frame.is_final) {
-        dismiss(true);
+        dismiss();
         prewarm_until_ = now + PREWARM_LINGER;
         changed_ = true;
     }
@@ -363,7 +349,6 @@ bool Engine::present() {
         controller_.resume();
         return false;
     }
-    clear_at_ = 0.0;
     wd_opacity(renderer_, 0.0f, 0.0f, 0.0f);
     shown_ = true;
     revealed_ = false;
@@ -443,6 +428,8 @@ void Engine::draw(const Frame& frame) {
     if (flags & WD_DREW) {
         stats_.painted(timings.render_ms / 1000.0);
         stats_.presented(timings.present_ms / 1000.0);
+    } else if (flags & WD_HAS_PICTURE) {
+        stats_.dropped();
     }
     if (flags & WD_CAPTURE_LOST) capturing_ = false;
     if (has_picture_) reveal();
@@ -523,30 +510,35 @@ void Engine::release_capture() {
 
 // --- Ending ----------------------------------------------------------------------------------
 
-void Engine::dismiss(bool animated) {
+// Gone at once, with no fade: the last frame drawn is the screen lying flat.
+void Engine::dismiss() {
     if (!shown_ || !renderer_) return;
     shown_ = false;
-    bool was_revealed = revealed_;
     revealed_ = false;
-    if (animated && was_revealed) {
-        wd_opacity(renderer_, 1.0f, 0.0f, FADE_OUT);
-        clear_at_ = monotonic() + FADE_OUT + 0.03;
-    } else {
-        wd_opacity(renderer_, 0.0f, 0.0f, 0.0f);
-        wd_clear(renderer_);
-        has_picture_ = placeholder_ = false;
-    }
+    wd_opacity(renderer_, 0.0f, 0.0f, 0.0f);
+    wd_clear(renderer_);
+    has_picture_ = placeholder_ = false;
     pointer_.end();
     report_run();
 }
 
+void Engine::begin_stats() {
+    int taken = 0, missed = 0;
+    if (renderer_) wd_capture_stats(renderer_, &taken, &missed);  // start from nothing
+    stats_.begin(period());
+}
+
 void Engine::report_run() {
-    if (stats_.active()) LOGI("app", "effect run: %s", stats_.summary().c_str());
+    if (!stats_.active()) return;
+    int taken = 0, missed = 0;
+    if (renderer_) wd_capture_stats(renderer_, &taken, &missed);
+    LOGI("app", "effect run: %s; desktop frames %d, %d more unseen", stats_.summary().c_str(),
+         taken, missed);
 }
 
 void Engine::teardown_effect() {
     held_ = false;
-    dismiss(false);
+    dismiss();
     pointer_.end();
     report_run();
     release_capture();

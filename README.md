@@ -43,7 +43,7 @@ Whenever the lid holds still, that position becomes zero, and the effect runs on
 
 WinDuo2 is native C++ throughout (`native/`): the effect's logic in `native/core`, the sensors, tray and settings in `native/app`, and a Direct3D 11 renderer in `native/winduo2_native.cpp`. The screen is captured with Desktop Duplication and never leaves the graphics card: it is scaled, its blur levels are built and the effect is drawn there, and the overlay is a DirectComposition surface that Windows composes directly, with fades that Windows runs by itself. It draws at the display's own refresh rate, 120 frames a second on a 120 Hz panel.
 
-After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `effect run:` line with the frame rate reached, how many frames missed their refresh, and where the time went.
+After every run of the effect the log (`%APPDATA%\WinDuo2\winduo2.log`) has an `effect run:` line with the frame rate reached, how many frames missed their refresh, where the time went, and how many desktop frames the capture took and how many the compositor made that it never saw.
 
 ## Known limits
 

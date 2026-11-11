@@ -20,6 +20,7 @@ public:
     void frame(double now, double work, double upload, bool uploaded);
     void painted(double seconds);
     void presented(double seconds);
+    void dropped() { if (active_) ++dropped_; }
     bool active() const { return active_; }
     std::string summary();  // ends the run
 
@@ -28,6 +29,7 @@ private:
     double period_ = 1.0 / 60;
     std::vector<double> intervals_, work_, uploads_, paints_, presents_;
     bool has_last_ = false;
+    int dropped_ = 0;  // frames drawn that the swap chain had no room for
     double first_ = 0.0, last_ = 0.0;
 };
 
@@ -81,7 +83,8 @@ private:
     bool ensure_capture();
     void release_capture();
     void reveal();
-    void dismiss(bool animated);
+    void dismiss();
+    void begin_stats();
     void report_run();
     void teardown_effect();
     bool make_renderer();
@@ -107,7 +110,6 @@ private:
     bool has_picture_ = false;
     bool placeholder_ = false;
     bool capturing_ = false;
-    double clear_at_ = 0.0;  // when a fade out ends, to drop the picture
     double raised_at_ = 0.0;
     double refresh_hz_ = 60.0;
     std::string problem_;

@@ -31,6 +31,7 @@ void wd_info(void* handle, WdInfo* info);
 void* wd_hwnd(void* handle);
 int wd_capture(void* handle, int on);
 int wd_frame(void* handle, const WdParams* params, int flags, WdTimings* timings);
+void wd_capture_stats(void* handle, int* taken, int* missed);
 void* wd_waitable(void* handle);
 void wd_signalled(void* handle);
 int wd_holds_signal(void* handle);
