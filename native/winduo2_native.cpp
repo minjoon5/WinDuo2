@@ -12,9 +12,9 @@
 //   premultiplied alpha. DWM composes it directly; nothing is read back.
 // - Fades are DirectComposition opacity animations, so DWM runs them and the
 //   app does not have to keep drawing to fade.
-// - The desktop is taken on a thread of its own, which waits for each frame
-//   the compositor makes. The frame loop only picks up the newest; see
-//   Renderer::capture_loop for why it cannot ask for them itself.
+// - The desktop is taken on a thread of its own, with a Direct3D device of
+//   its own, which waits for each frame the compositor makes. The frame loop
+//   only picks up the newest; see Renderer::capture_loop.
 //
 // The shaders began as ports of the Python app's winduo2/render/shaders.py.
 // The app drives everything through the plain C API at the bottom
@@ -29,7 +29,6 @@
 #include <windows.h>
 
 #include <d3d11.h>
-#include <d3d11_4.h>
 #include <d3dcompiler.h>
 #include <dcomp.h>
 #include <dxgi1_2.h>
@@ -764,17 +763,29 @@ struct Renderer {
     ComPtr<IDXGIAdapter1> adapter;
     ComPtr<IDXGIOutput1> output;
     ComPtr<IDXGIOutputDuplication> duplication;
-    // The thread that takes the desktop's frames; see capture_loop.
+    // The thread that takes the desktop's frames, and the device it does it
+    // with; see capture_loop. Its copy of the desktop is a texture shared
+    // with the drawing device, which opens it as pipe.desktop; the keyed
+    // mutex on it keeps a copy and a read apart.
+    ComPtr<ID3D11Device> capture_device;
+    ComPtr<ID3D11DeviceContext> capture_context;
+    ComPtr<ID3D11Texture2D> capture_texture;  // the thread's
+    ComPtr<IDXGIKeyedMutex> capture_sync;     // the thread's
+    int capture_w = 0, capture_h = 0;         // the thread's
+    ComPtr<IDXGIKeyedMutex> desktop_sync;     // the frame loop's
+    unsigned opened_generation = 0;           // the frame loop's
     std::thread capture_thread;
     HANDLE capture_wake = nullptr;  // wakes it from idling
     std::atomic<bool> capture_stop{false};
     std::atomic<bool> capture_lost{false};  // it gave up; capture must start over
     std::atomic<HRESULT> capture_error{S_OK};
     std::atomic<double> pulled_at_ms{0.0};  // when a picture was last wanted
-    // Guards the desktop copy and what is known of it: whether it holds a
-    // real frame the picture has not been made from yet, and whether it
-    // holds anything current at all.
+    // Guards what is known of the desktop copy: which texture it is, whether
+    // it holds a real frame the picture has not been made from yet, and
+    // whether it holds anything current at all.
     std::mutex desktop_lock;
+    HANDLE shared_handle = nullptr;
+    unsigned shared_generation = 0;  // counts the textures made
     bool desktop_fresh = false;
     bool desktop_filled = false;
     // When a picture was first asked for and none was there.
@@ -827,22 +838,23 @@ struct Renderer {
         return false;
     }
 
-    bool create_device() {
+    bool make_device(ComPtr<ID3D11Device>& device, ComPtr<ID3D11DeviceContext>& context) {
         D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
         UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
         HRESULT hr = D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
-                                       levels, 2, D3D11_SDK_VERSION, &pipe.device, nullptr,
-                                       &pipe.context);
+                                       levels, 2, D3D11_SDK_VERSION, &device, nullptr, &context);
         if (FAILED(hr))
             hr = D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
-                                   levels + 1, 1, D3D11_SDK_VERSION, &pipe.device, nullptr,
-                                   &pipe.context);
+                                   levels + 1, 1, D3D11_SDK_VERSION, &device, nullptr, &context);
         CHECK(hr, "D3D11CreateDevice");
-        // The capture thread copies each desktop frame with this context
-        // while the frame loop draws with it.
-        ComPtr<ID3D11Multithread> multithread;
-        CHECK(pipe.context.As(&multithread), "ID3D11Multithread");
-        multithread->SetMultithreadProtected(TRUE);
+        return true;
+    }
+
+    // Two devices: Desktop Duplication waits for frames inside the device it
+    // was made on, and drawing with that device stalls behind the wait.
+    bool create_device() {
+        if (!make_device(pipe.device, pipe.context)) return false;
+        if (!make_device(capture_device, capture_context)) return false;
         capture_wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         if (!capture_wake) {
             set_error("CreateEvent failed (%lu)", GetLastError());
@@ -934,7 +946,7 @@ struct Renderer {
 
     bool start_capture() {
         if (duplication) return true;
-        HRESULT hr = output->DuplicateOutput(pipe.device.Get(), &duplication);
+        HRESULT hr = output->DuplicateOutput(capture_device.Get(), &duplication);
         if (FAILED(hr)) {
             set_error("DuplicateOutput failed (0x%08lx)", (unsigned long)hr);
             duplication.Reset();
@@ -960,6 +972,9 @@ struct Renderer {
             capture_thread.join();
         }
         duplication.Reset();
+        capture_texture.Reset();
+        capture_sync.Reset();
+        capture_w = capture_h = 0;
     }
 
     void reset_wait() { wanted_since_ms = 0.0; }
@@ -990,6 +1005,10 @@ struct Renderer {
     // unevenly, while the effect itself drew every frame. Waiting here
     // instead takes each frame the moment it is made and gives it back long
     // before the next.
+    //
+    // On a device of its own, because the wait for a frame is made inside the
+    // device: sharing the drawing one, with a lock around it, held every draw
+    // call up for as long as the desktop stayed still.
     //
     // Only while pictures are being asked for: left alone, the duplication
     // keeps what changed, and the first frame taken afterwards has it all.
@@ -1025,13 +1044,20 @@ struct Renderer {
             // made the picture only once no real frame has come for a while,
             // as on a desktop where nothing changes at all.
             bool real = info.LastPresentTime.QuadPart != 0;
+            bool needed;
+            {
+                std::lock_guard<std::mutex> lock(desktop_lock);
+                needed = real || !desktop_filled;
+            }
             ComPtr<ID3D11Texture2D> frame;
-            if (SUCCEEDED(resource.As(&frame))) {
+            if (needed && SUCCEEDED(resource.As(&frame))) {
                 D3D11_TEXTURE2D_DESC fd;
                 frame->GetDesc(&fd);
-                std::lock_guard<std::mutex> lock(desktop_lock);
-                if ((real || !desktop_filled) && pipe.ensure_desktop((int)fd.Width, (int)fd.Height)) {
-                    pipe.context->CopyResource(pipe.desktop.Get(), frame.Get());
+                if (ensure_shared((int)fd.Width, (int)fd.Height) &&
+                    capture_sync->AcquireSync(0, INFINITE) == S_OK) {
+                    capture_context->CopyResource(capture_texture.Get(), frame.Get());
+                    capture_sync->ReleaseSync(0);
+                    std::lock_guard<std::mutex> lock(desktop_lock);
                     desktop_filled = true;
                     if (real) desktop_fresh = true;
                 }
@@ -1040,6 +1066,51 @@ struct Renderer {
             resource.Reset();
             source->ReleaseFrame();
         }
+    }
+
+    // The capture thread's copy of the desktop, sRGB like the picture, made
+    // again when the duplicated desktop's size changes. On the capture thread.
+    bool ensure_shared(int width, int height) {
+        if (capture_texture && capture_w == width && capture_h == height) return true;
+        capture_texture.Reset();
+        capture_sync.Reset();
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width = width;
+        td.Height = height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        td.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+        ComPtr<IDXGIResource> shared;
+        HANDLE handle = nullptr;
+        if (FAILED(capture_device->CreateTexture2D(&td, nullptr, &capture_texture)) ||
+            FAILED(capture_texture.As(&shared)) || FAILED(shared->GetSharedHandle(&handle)) ||
+            FAILED(capture_texture.As(&capture_sync))) {
+            capture_texture.Reset();
+            capture_sync.Reset();
+            return false;
+        }
+        capture_w = width;
+        capture_h = height;
+        std::lock_guard<std::mutex> lock(desktop_lock);
+        shared_handle = handle;
+        ++shared_generation;
+        desktop_fresh = desktop_filled = false;
+        return true;
+    }
+
+    // The capture thread's texture, opened on the drawing device.
+    bool open_desktop(HANDLE handle) {
+        pipe.desktop.Reset();
+        pipe.desktop_srv.Reset();
+        desktop_sync.Reset();
+        return SUCCEEDED(pipe.device->OpenSharedResource(handle, IID_PPV_ARGS(&pipe.desktop))) &&
+               SUCCEEDED(pipe.desktop.As(&desktop_sync)) &&
+               SUCCEEDED(pipe.device->CreateShaderResourceView(pipe.desktop.Get(), nullptr,
+                                                               &pipe.desktop_srv));
     }
 
     // The newest desktop image into the picture, if there is a new one.
@@ -1057,15 +1128,35 @@ struct Renderer {
         SetEvent(capture_wake);
         if (!pipe.has_picture && wanted_since_ms == 0.0) wanted_since_ms = now;
         int result = 0;
+        bool take, real;
+        HANDLE handle;
+        unsigned generation;
         {
             std::lock_guard<std::mutex> lock(desktop_lock);
             bool overdue = !pipe.has_picture && desktop_filled &&
                            now - wanted_since_ms >= EMPTY_FRAME_GRACE_MS;
-            if (desktop_fresh || overdue) {
-                desktop_fresh = false;
+            real = desktop_fresh;
+            take = real || overdue;
+            desktop_fresh = false;
+            handle = shared_handle;
+            generation = shared_generation;
+        }
+        if (!take) return result;
+        bool taken = false;
+        if (generation == opened_generation || open_desktop(handle)) {
+            opened_generation = generation;
+            // Not waited for long: the capture thread holds it only to copy.
+            if (desktop_sync->AcquireSync(0, 4) == S_OK) {
                 pipe.scale_desktop_into_picture();
+                desktop_sync->ReleaseSync(0);
                 result |= WD_NEW_PICTURE;
+                taken = true;
             }
+        }
+        if (!taken && real) {
+            // Still to be made the picture, on a later frame.
+            std::lock_guard<std::mutex> lock(desktop_lock);
+            desktop_fresh = true;
         }
         if (pipe.has_picture) reset_wait();
         return result;
