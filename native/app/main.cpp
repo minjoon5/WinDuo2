@@ -144,8 +144,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (options.selftest) return selftest();
     log_open(options.verbose);
-    LOGI("main", "WinDuo2 starting, pid %lu%s", GetCurrentProcessId(),
-         options.autostart ? " (started at sign-in)" : "");
+    // The build's own date, so a log says which build wrote it.
+    LOGI("main", "WinDuo2 starting, built " __DATE__ " " __TIME__ ", pid %lu%s",
+         GetCurrentProcessId(), options.autostart ? " (started at sign-in)" : "");
     if (options.sensors) return print_sensor();
 
     if (!options.preview && !claim_single_instance()) {
